@@ -13,8 +13,8 @@ import { Menu } from "lucide-react"
 const mainNavItems = [
   { name: "Home", href: "/" },
   { name: "Shop", href: "/shop" },
-  { name: "About", href: "/about" },
-  { name: "Contact", href: "/contact" },
+  //{ name: "About", href: "/about" },
+  //{ name: "Contact", href: "/contact" },
 ]
 
 const adminNavItems = [
