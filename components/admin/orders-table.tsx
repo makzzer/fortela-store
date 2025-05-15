@@ -1,3 +1,5 @@
+
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,24 +12,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Eye, MoreHorizontal, Truck, XCircle } from "lucide-react"
+import OrderDetailsModal from "./OrderDetailsModal"
 
-// This would be fetched from the API in a real app
 const getOrders = async () => {
-  // Simulate API call
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  const res = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
+    cache: "no-store",
+  })
+  const data = await res.json()
 
-  return Array(10)
-    .fill(0)
-    .map((_, i) => ({
-      id: `ORD-${1000 + i}`,
-      customer: ["John Doe", "Jane Smith", "Robert Johnson", "Emily Davis", "Michael Wilson"][i % 5],
-      email: ["john@example.com", "jane@example.com", "robert@example.com", "emily@example.com", "michael@example.com"][
-        i % 5
-      ],
-      date: new Date(Date.now() - i * 86400000).toLocaleDateString(),
-      total: Math.floor(Math.random() * 200) + 50,
-      status: ["Completed", "Processing", "Shipped", "Pending", "Cancelled"][i % 5],
-    }))
+  return data.data.map((order: any) => ({
+    id: order.id,
+    total: order.total,
+    date: new Date(order.fecha).toLocaleDateString(),
+    status: order.estado,
+    tipo_venta: order.tipo_venta,
+  }))
 }
 
 export default async function OrdersTable() {
@@ -37,38 +36,33 @@ export default async function OrdersTable() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Order ID</TableHead>
-          <TableHead>Customer</TableHead>
+          <TableHead>ID</TableHead>
           <TableHead>Date</TableHead>
           <TableHead>Total</TableHead>
+          <TableHead>Type</TableHead>
           <TableHead>Status</TableHead>
           <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {orders.map((order) => (
+        {orders.map((order: any) => (
           <TableRow key={order.id}>
-            <TableCell className="font-medium">{order.id}</TableCell>
-            <TableCell>
-              <div>
-                <div>{order.customer}</div>
-                <div className="text-sm text-muted-foreground">{order.email}</div>
-              </div>
-            </TableCell>
+            <TableCell className="font-medium">ORD-{order.id}</TableCell>
             <TableCell>{order.date}</TableCell>
             <TableCell>${order.total.toFixed(2)}</TableCell>
             <TableCell>
+              <Badge variant="secondary">{order.tipo_venta}</Badge>
+            </TableCell>
+            <TableCell>
               <Badge
                 variant={
-                  order.status === "Completed"
+                  order.status === "completado"
                     ? "default"
-                    : order.status === "Processing"
-                      ? "secondary"
-                      : order.status === "Shipped"
-                        ? "outline"
-                        : order.status === "Pending"
-                          ? "secondary"
-                          : "destructive"
+                    : order.status === "pendiente"
+                    ? "secondary"
+                    : order.status === "cancelado"
+                    ? "destructive"
+                    : "outline"
                 }
               >
                 {order.status}
@@ -85,8 +79,12 @@ export default async function OrdersTable() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Actions</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <Eye className="mr-2 h-4 w-4" /> View Details
+                  <DropdownMenuItem asChild>
+                    <OrderDetailsModal order={order}>
+                      <div className="flex items-center">
+                        <Eye className="mr-2 h-4 w-4" /> View Details
+                      </div>
+                    </OrderDetailsModal>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
                     <Truck className="mr-2 h-4 w-4" /> Update Status
