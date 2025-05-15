@@ -20,27 +20,46 @@ export default function CartPage() {
 
   const handleCheckout = async () => {
     setIsCheckingOut(true)
-
-    // Simulate API call to checkout
+  
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      toast({
-        title: "Order placed successfully!",
-        description: "You will receive a confirmation email shortly.",
+      const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+      const productos = cart.map((item) => item.id)
+      const fecha = new Date().toISOString()
+  
+      const res = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: {
+            total,
+            estado: "pendiente",
+            tipo_venta: "online",
+            fecha,
+            fortela_productos: productos,
+            fortela_cliente: 1, // ID del cliente mock, después lo reemplazás con el logueado
+          },
+        }),
       })
-
+  
+      if (!res.ok) throw new Error("Error al crear la orden")
+  
+      toast({
+        title: "Orden creada correctamente",
+        description: "Tu compra ha sido registrada",
+      })
+  
       clearCart()
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Checkout failed",
-        description: "There was a problem processing your order. Please try again.",
+        title: "Error al generar orden",
+        description: "Ocurrió un error al finalizar la compra.",
       })
     } finally {
       setIsCheckingOut(false)
     }
   }
+  
 
   return (
     <div className="container mx-auto px-4 py-8">

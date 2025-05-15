@@ -9,6 +9,8 @@ interface POSItem {
   price: number
   quantity: number
   size?: string
+  stock:number
+  qr_code:string
 }
 
 interface POSCartItemProps {

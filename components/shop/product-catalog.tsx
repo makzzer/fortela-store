@@ -5,28 +5,32 @@ import AddToCartButton from "./add-to-cart-button"
 
 // This would be fetched from the API in a real app
 const getProducts = async () => {
-  // Simulate API call
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  const res = await fetch("https://vps-4937880-x.dattaweb.com/api/productos", {
+    next: { revalidate: 60 }, // habilita caching ISR
+  });
 
-  return Array(12)
-    .fill(0)
-    .map((_, i) => ({
-      id: `${i + 1}`,
-      name: `School Uniform Item ${i + 1}`,
-      description: "High-quality school uniform item",
-      price: Math.floor(Math.random() * 50) + 10,
-      image: "/placeholder.svg",
-      category: ["boys", "girls", "accessories"][Math.floor(Math.random() * 3)],
-      sizes: ["S", "M", "L", "XL"],
-    }))
-}
+  if (!res.ok) throw new Error("Error fetching productos");
+
+  const data = await res.json();
+
+  return data.data.map((item: any) => ({
+    id: item.id,
+    name: item.nombre,
+    description: item.descripcion,
+    price: item.precio,
+    image: "/placeholder.svg", // reemplazá esto si usás media en Strapi
+    category: item.genero || "unisex",
+    sizes: item.talles || [],
+  }));
+};
+
 
 export default async function ProductCatalog() {
   const products = await getProducts()
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      {products.map((product) => (
+      {products.map((product:any) => (
         <Card key={product.id} className="overflow-hidden">
           <div className="aspect-square relative">
             <Image

@@ -5,19 +5,24 @@ import AddToCartButton from "./add-to-cart-button"
 
 // This would be fetched from the API in a real app
 const getProduct = async (id: string) => {
-  // Simulate API call
-  await new Promise((resolve) => setTimeout(resolve, 800))
+  const res = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${id}?populate=*`, {
+    next: { revalidate: 60 }, // opcional para ISR
+  });
 
-  // Mock product data
-  const product = {
-    id,
-    name: `School Uniform Item ${id}`,
-    description:
-      "High-quality school uniform item made with durable materials for everyday wear. Designed to meet school dress code requirements while providing comfort and style.",
-    price: Math.floor(Math.random() * 50) + 10,
-    image: "/placeholder.svg",
-    category: ["boys", "girls", "accessories"][Math.floor(Math.random() * 3)],
-    sizes: ["S", "M", "L", "XL"],
+  if (!res.ok) return null;
+
+  const { data } = await res.json();
+
+  return {
+    id: data.id,
+    name: data.nombre,
+    description: data.descripcion,
+    price: data.precio,
+    image: data.imagen?.data?.attributes?.url
+      ? `https://vps-4937880-x.dattaweb.com${data.imagen.data.attributes.url}`
+      : "/placeholder.svg",
+    category: data.genero || "unisex",
+    sizes: data.talles || [],
     details: {
       material: "65% Polyester, 35% Cotton",
       care: "Machine wash cold, tumble dry low",
@@ -28,10 +33,9 @@ const getProduct = async (id: string) => {
         "Designed for comfort and all-day wear",
       ],
     },
-  }
+  };
+};
 
-  return product
-}
 
 export default async function ProductDetails({ id }: { id: string }) {
   const product = await getProduct(id)
