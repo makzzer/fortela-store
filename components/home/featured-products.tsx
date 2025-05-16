@@ -15,7 +15,7 @@ const getFeaturedProducts = async () => {
       name: `Featured Uniform Item ${i + 1}`,
       description: "High-quality school uniform item",
       price: Math.floor(Math.random() * 50) + 10,
-      image: "/placeholder.svg",
+      image: "/bana.webp",
     }))
 }
 

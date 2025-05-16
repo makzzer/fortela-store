@@ -63,15 +63,15 @@ export default function CartPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Your Cart</h1>
+      <h1 className="text-3xl font-bold mb-8">Tu Carrito</h1>
 
       {cart.length === 0 ? (
         <div className="text-center py-16">
           <ShoppingBag className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
-          <h2 className="text-2xl font-semibold mb-2">Your cart is empty</h2>
-          <p className="text-muted-foreground mb-6">Looks like you haven't added any items to your cart yet.</p>
+          <h2 className="text-2xl font-semibold mb-2">Tu carrito está vacío</h2>
+          <p className="text-muted-foreground mb-6">Parece que no añadiste nada a tu carrito aún</p>
           <Button asChild>
-            <Link href="/shop">Continue Shopping</Link>
+            <Link href="/shop">Seguir comprando</Link>
           </Button>
         </div>
       ) : (

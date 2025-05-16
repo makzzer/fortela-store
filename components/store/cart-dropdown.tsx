@@ -27,21 +27,21 @@ export default function CartDropdown() {
               {totalItems}
             </span>
           )}
-          <span className="sr-only">Open cart</span>
+          <span className="sr-only">Abrir carrito de compras</span>
         </Button>
       </SheetTrigger>
       <SheetContent className="flex w-full flex-col sm:max-w-lg">
         <SheetHeader className="px-1">
-          <SheetTitle>Cart ({totalItems})</SheetTitle>
+          <SheetTitle>Carrito de compras ({totalItems})</SheetTitle>
         </SheetHeader>
 
         {cart.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center space-y-2">
             <ShoppingBag className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
-            <div className="text-xl font-medium">Your cart is empty</div>
+            <div className="text-xl font-medium">Tu carrito está vacío</div>
             <SheetTrigger asChild>
               <Button asChild variant="link" className="text-sm text-muted-foreground">
-                <Link href="/shop">Continue shopping</Link>
+                <Link href="/shop">Seguir comprando</Link>
               </Button>
             </SheetTrigger>
           </div>

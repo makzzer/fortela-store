@@ -11,13 +11,12 @@ import { CartProvider } from "@/components/store/cart-provider";
 import { ProductosProvider } from "./context/ProductosContext";
 import { CategoriasProvider } from "./context/CategoriasContext";
 import { OrdenesProvider } from "@/app/context/OrdenesContext";
-import { VentasProvider } from "@/app/context/VentasContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Fortela - School Uniform Store",
-  description: "Quality school uniforms for all ages",
+  title: "Fortela - Tienda de uniformes escolares",
+  description: "Calidad de uniformes escolares para todas las edades",
   generator: "v0.dev",
 };
 
@@ -32,16 +31,14 @@ export default function RootLayout({
         <ProductosProvider>
           <CategoriasProvider>
             <OrdenesProvider>
-              <VentasProvider>
-                <CartProvider>
-                  <div className="flex min-h-screen flex-col">
-                    <Header />
-                    <main className="flex-1">{children}</main>
-                    <Footer />
-                  </div>
-                  <Toaster />
-                </CartProvider>
-              </VentasProvider>
+              <CartProvider>
+                <div className="flex min-h-screen flex-col">
+                  <Header />
+                  <main className="flex-1">{children}</main>
+                  <Footer />
+                </div>
+                <Toaster />
+              </CartProvider>
             </OrdenesProvider>
           </CategoriasProvider>
         </ProductosProvider>

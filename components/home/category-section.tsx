@@ -7,19 +7,19 @@ const categories = [
   {
     id: "boys",
     name: "Boys Uniforms",
-    image: "/placeholder.svg",
+    image: "/bana.webp",
     description: "Comfortable and durable uniforms for boys of all ages",
   },
   {
     id: "girls",
     name: "Girls Uniforms",
-    image: "/placeholder.svg",
+    image: "/bana.webp",
     description: "Stylish and practical uniforms for girls of all ages",
   },
   {
     id: "accessories",
     name: "Accessories",
-    image: "/placeholder.svg",
+    image: "/bana.webp",
     description: "Complete the look with our range of school accessories",
   },
 ]
