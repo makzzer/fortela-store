@@ -24,7 +24,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
       </Suspense>
 
       <div className="mt-16">
-        <h2 className="text-2xl font-bold mb-6">You may also like</h2>
+        <h2 className="text-2xl font-bold mb-6">Tal vez también te interese</h2>
         <Suspense fallback={<RelatedProductsSkeleton />}>
           <RelatedProducts id={id} />
         </Suspense>

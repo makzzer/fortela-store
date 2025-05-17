@@ -82,9 +82,11 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
         <AddToCartButton product={product} />
 
         <div className="mt-6">
-          <h2 className="font-semibold mb-2">Código QR del producto</h2>
-          <QRCode value={product.documentId} size={128} />
+          <h2 className="font-semibold mb-2 text-center">Código QR del producto</h2>
+          <div className="flex justify-center items-center bg-white p-4 rounded-md shadow-md w-fit mx-auto">
+            <QRCode value={product.documentId} size={128} />
           </div>
+        </div>
       </div>
     </div>
   )
