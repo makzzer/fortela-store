@@ -4,6 +4,7 @@ import Image from "next/image"
 import { useEffect, useState } from "react"
 import AddToCartButton from "./add-to-cart-button"
 import { Skeleton } from "@/components/ui/skeleton"
+import QRCode from "react-qr-code"
 
 interface ProductDetailsProps {
   id: string
@@ -19,11 +20,13 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
         const res = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${id}`, {
           cache: "no-store",
         })
+
         const data = await res.json()
         const productData = data.data?.[0]
 
         if (!productData) {
           console.error("Producto no encontrado")
+          setLoading(false)
           return
         }
 
@@ -32,7 +35,7 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
           name: productData.nombre,
           description: productData.descripcion,
           price: productData.precio,
-          image: "/bana.webp",
+          image: "/bana.webp", // reemplazá si usás media real
           sizes: productData.talles || [],
         })
       } catch (error) {
@@ -70,11 +73,18 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
           className="object-cover rounded-md"
         />
       </div>
+
       <div>
         <h1 className="text-3xl font-bold mb-4">{product.name}</h1>
         <p className="text-muted-foreground mb-4">{product.description}</p>
         <p className="text-2xl font-semibold mb-6">${product.price.toFixed(2)}</p>
+
         <AddToCartButton product={product} />
+
+        <div className="mt-6">
+          <h2 className="font-semibold mb-2">Código QR del producto</h2>
+          <QRCode value={product.documentId} size={128} />
+          </div>
       </div>
     </div>
   )
