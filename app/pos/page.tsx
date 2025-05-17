@@ -16,7 +16,7 @@ interface POSItem {
   quantity: number;
   size?: string;
   qr_code: string;
-  stock:number;
+  stock: number;
 }
 
 export default function POSPage() {
@@ -44,7 +44,7 @@ export default function POSPage() {
         size: item.talles?.[0] || "M",
         qr_code: item.qr_code,
         quantity: 1,
-        stock:item.stock,
+        stock: item.stock,
       };
 
       setCart((prevCart) => {
@@ -112,14 +112,13 @@ export default function POSPage() {
 
       if (!res.ok) throw new Error("Error al guardar la venta");
 
-      // Actualizar el stock de cada producto vendido
       await Promise.all(
         cart.map(async (item) => {
           await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              data: { stock: { $subtract: [item.stock, item.quantity] } },
+              data: { stock: item.stock - item.quantity },
             }),
           });
         })
