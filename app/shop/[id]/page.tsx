@@ -10,22 +10,23 @@ interface ProductPageProps {
   }
 }
 
-export default function ProductPage({ params }: ProductPageProps) {
-  // In a real app, validate the ID here
-  if (!params.id || isNaN(Number(params.id))) {
+export default async function ProductPage({ params }: ProductPageProps) {
+  const { id } = params
+
+  if (!id) {
     notFound()
   }
 
   return (
     <div className="container mx-auto px-4 py-8">
       <Suspense fallback={<ProductDetailsSkeleton />}>
-        <ProductDetails id={params.id} />
+        <ProductDetails id={id} />
       </Suspense>
 
       <div className="mt-16">
         <h2 className="text-2xl font-bold mb-6">You may also like</h2>
         <Suspense fallback={<RelatedProductsSkeleton />}>
-          <RelatedProducts id={params.id} />
+          <RelatedProducts id={id} />
         </Suspense>
       </div>
     </div>
