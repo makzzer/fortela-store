@@ -20,12 +20,12 @@ export default function CartPage() {
 
   const handleCheckout = async () => {
     setIsCheckingOut(true)
-  
+
     try {
-      const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
-      const productos = cart.map((item) => item.id)
+      const productos = cart.map((item) => item.documentId)
       const fecha = new Date().toISOString()
-  
+
+      // 1. Crear la orden
       const res = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -36,18 +36,38 @@ export default function CartPage() {
             tipo_venta: "online",
             fecha,
             fortela_productos: productos,
-            fortela_cliente: 1, // ID del cliente mock, después lo reemplazás con el logueado
+            fortela_cliente: 1,
           },
         }),
       })
-  
+
       if (!res.ok) throw new Error("Error al crear la orden")
-  
+
+      // 2. Actualizar el stock
+      for (const item of cart) {
+        const getRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`)
+        const data = await getRes.json()
+        const currentStock = data?.data?.stock
+
+        if (currentStock !== undefined && currentStock !== null) {
+          const newStock = currentStock - item.quantity
+          await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              data: {
+                stock: newStock >= 0 ? newStock : 0,
+              },
+            }),
+          })
+        }
+      }
+
       toast({
         title: "Orden creada correctamente",
-        description: "Tu compra ha sido registrada",
+        description: "Tu compra ha sido registrada y el stock actualizado.",
       })
-  
+
       clearCart()
     } catch (error) {
       toast({
@@ -59,7 +79,6 @@ export default function CartPage() {
       setIsCheckingOut(false)
     }
   }
-  
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -79,14 +98,14 @@ export default function CartPage() {
           <div className="lg:col-span-2">
             <div className="space-y-4">
               {cart.map((item) => (
-                <CartItem key={`${item.id}-${item.size}`} item={item} />
+                <CartItem key={`${item.documentId}-${item.size ?? ""}`} item={item} />
               ))}
             </div>
           </div>
 
           <div className="lg:col-span-1">
             <div className="border rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Order Summary</h2>
+              <h2 className="text-xl font-semibold mb-4">Resumen de compra</h2>
 
               <div className="space-y-3 mb-4">
                 <div className="flex justify-between">
@@ -94,7 +113,7 @@ export default function CartPage() {
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Shipping</span>
+                  <span>Envío</span>
                   <span>${shipping.toFixed(2)}</span>
                 </div>
                 <Separator />
@@ -105,13 +124,13 @@ export default function CartPage() {
               </div>
 
               <Button className="w-full mb-3" size="lg" onClick={handleCheckout} disabled={isCheckingOut}>
-                {isCheckingOut ? "Processing..." : "Checkout"}
+                {isCheckingOut ? "Procesando..." : "Finalizar compra"}
                 {!isCheckingOut && <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
 
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <p>This is a demo checkout. No actual payment will be processed.</p>
+                <p>Este es un checkout de prueba. No se realizará ningún pago real.</p>
               </div>
             </div>
           </div>

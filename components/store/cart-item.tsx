@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,17 +17,17 @@ export default function CartItem({ item }: CartItemProps) {
   const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number.parseInt(e.target.value)
     if (!isNaN(value) && value > 0) {
-      updateQuantity(item.id, value, item.size)
+      updateQuantity(item.documentId, value, item.size)
     }
   }
 
   const incrementQuantity = () => {
-    updateQuantity(item.id, item.quantity + 1, item.size)
+    updateQuantity(item.documentId, item.quantity + 1, item.size)
   }
 
   const decrementQuantity = () => {
     if (item.quantity > 1) {
-      updateQuantity(item.id, item.quantity - 1, item.size)
+      updateQuantity(item.documentId, item.quantity - 1, item.size)
     }
   }
 
@@ -40,7 +39,7 @@ export default function CartItem({ item }: CartItemProps) {
 
       <div className="flex-1 space-y-1">
         <h3 className="font-medium">{item.name}</h3>
-        {item.size && <p className="text-sm text-muted-foreground">Size: {item.size}</p>}
+        {item.size && <p className="text-sm text-muted-foreground">Talle: {item.size}</p>}
         <p className="font-medium">${item.price.toFixed(2)}</p>
       </div>
 
@@ -48,7 +47,7 @@ export default function CartItem({ item }: CartItemProps) {
         <div className="flex items-center">
           <Button variant="outline" size="icon" className="h-8 w-8 rounded-r-none" onClick={decrementQuantity}>
             <Minus className="h-3 w-3" />
-            <span className="sr-only">Decrease quantity</span>
+            <span className="sr-only">Disminuir cantidad</span>
           </Button>
           <Input
             type="number"
@@ -59,7 +58,7 @@ export default function CartItem({ item }: CartItemProps) {
           />
           <Button variant="outline" size="icon" className="h-8 w-8 rounded-l-none" onClick={incrementQuantity}>
             <Plus className="h-3 w-3" />
-            <span className="sr-only">Increase quantity</span>
+            <span className="sr-only">Aumentar cantidad</span>
           </Button>
         </div>
 
@@ -67,10 +66,10 @@ export default function CartItem({ item }: CartItemProps) {
           variant="ghost"
           size="icon"
           className="h-8 w-8 text-muted-foreground"
-          onClick={() => removeFromCart(item.id, item.size)}
+          onClick={() => removeFromCart(item.documentId, item.size)}
         >
           <Trash2 className="h-4 w-4" />
-          <span className="sr-only">Remove</span>
+          <span className="sr-only">Eliminar</span>
         </Button>
       </div>
     </div>

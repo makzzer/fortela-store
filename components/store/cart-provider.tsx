@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 
 export interface CartItem {
+  documentId: string
   id: string
   name: string
   price: number
@@ -14,8 +15,8 @@ export interface CartItem {
 interface CartContextType {
   cart: CartItem[]
   addToCart: (item: CartItem) => void
-  removeFromCart: (id: string, size?: string) => void
-  updateQuantity: (id: string, quantity: number, size?: string) => void
+  removeFromCart: (documentId: string, size?: string) => void
+  updateQuantity: (documentId: string, quantity: number, size?: string) => void
   clearCart: () => void
 }
 
@@ -43,26 +44,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addToCart = (item: CartItem) => {
     setCart((prevCart) => {
-      const existingItemIndex = prevCart.findIndex((cartItem) => cartItem.id === item.id && cartItem.size === item.size)
+      const existingItemIndex = prevCart.findIndex(
+        (cartItem) => cartItem.documentId === item.documentId && cartItem.size === item.size
+      )
 
       if (existingItemIndex >= 0) {
-        // Item exists, update quantity
         const newCart = [...prevCart]
         newCart[existingItemIndex].quantity += item.quantity
         return newCart
       } else {
-        // Item doesn't exist, add it
         return [...prevCart, item]
       }
     })
   }
 
-  const removeFromCart = (id: string, size?: string) => {
-    setCart((prevCart) => prevCart.filter((item) => !(item.id === id && item.size === size)))
+  const removeFromCart = (documentId: string, size?: string) => {
+    setCart((prevCart) =>
+      prevCart.filter((item) => !(item.documentId === documentId && item.size === size))
+    )
   }
 
-  const updateQuantity = (id: string, quantity: number, size?: string) => {
-    setCart((prevCart) => prevCart.map((item) => (item.id === id && item.size === size ? { ...item, quantity } : item)))
+  const updateQuantity = (documentId: string, quantity: number, size?: string) => {
+    setCart((prevCart) =>
+      prevCart.map((item) =>
+        item.documentId === documentId && item.size === size
+          ? { ...item, quantity }
+          : item
+      )
+    )
   }
 
   const clearCart = () => {

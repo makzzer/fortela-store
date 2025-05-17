@@ -13,7 +13,7 @@ const getStockAlerts = async () => {
       id: `${i + 1}`,
       name: `School Uniform Item ${i + 1}`,
       stock: Math.floor(Math.random() * 5) + 1,
-      image: "/placeholder.svg",
+      image: "/bana.webp",
     }))
 }
 

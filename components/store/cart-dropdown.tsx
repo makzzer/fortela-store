@@ -50,7 +50,7 @@ export default function CartDropdown() {
             <ScrollArea className="flex-1 px-1">
               <div className="space-y-4 py-4">
                 {cart.map((item) => (
-                  <div key={`${item.id}-${item.size}`} className="flex items-start gap-3">
+                  <div key={`${item.documentId}-${item.size ?? "default"}`} className="flex items-start gap-3">
                     <div className="w-16 h-16 rounded-md overflow-hidden bg-muted relative">
                       <Image src={item.image || "/placeholder.svg"} alt={item.name} fill className="object-cover" />
                     </div>
