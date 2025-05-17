@@ -61,7 +61,7 @@ export default function CartDropdown() {
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
-                          onClick={() => removeFromCart(item.id, item.size)}
+                          onClick={() => removeFromCart(item.documentId, item.size)}
                         >
                           <X className="h-4 w-4" />
                           <span className="sr-only">Remove</span>
@@ -75,6 +75,7 @@ export default function CartDropdown() {
                     </div>
                   </div>
                 ))}
+
               </div>
             </ScrollArea>
 
