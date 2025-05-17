@@ -5,10 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
-import QRScanner from "@/components/admin/qr-scanner";
 import POSCartItem from "@/components/pos/pos-cart-item";
 import { Scan, ShoppingCart, CreditCard, Trash2 } from "lucide-react";
-
+import dynamic from "next/dynamic"
 interface POSItem {
   id: string;
   name: string;
@@ -19,6 +18,10 @@ interface POSItem {
   stock: number;
 }
 
+const QRScanner = dynamic(() => import("@/components/admin/qr-scanner"), {
+  ssr: false,
+})
+
 export default function POSPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [cart, setCart] = useState<POSItem[]>([]);
@@ -26,52 +29,54 @@ export default function POSPage() {
   const { toast } = useToast();
 
   const handleScan = async (code: string) => {
-    setIsScanning(false);
+    setIsScanning(false)
     try {
+      // Nuevo: buscar por documentId escaneado
       const res = await fetch(
-        `https://vps-4937880-x.dattaweb.com/api/productos?filters[qr_code][$eq]=${code}`
-      );
-      const data = await res.json();
-
-      if (!data.data.length) throw new Error("Producto no encontrado");
-
-      const item = data.data[0];
-
+        `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${code}&populate=*`
+      )
+      const data = await res.json()
+  
+      if (!data.data.length) throw new Error("Producto no encontrado")
+  
+      const item = data.data[0]
+  
       const product = {
         id: item.id.toString(),
         name: item.nombre,
         price: item.precio,
         size: item.talles?.[0] || "M",
-        qr_code: item.qr_code,
+        qr_code: item.qr_code || code, // fallback si no tiene campo
         quantity: 1,
         stock: item.stock,
-      };
-
+      }
+  
       setCart((prevCart) => {
         const existingItem = prevCart.find(
-          (i) => i.qr_code === product.qr_code && i.size === product.size
-        );
-
+          (i) => i.id === product.id && i.size === product.size
+        )
+  
         if (existingItem) {
           return prevCart.map((i) =>
-            i.qr_code === product.qr_code && i.size === product.size
+            i.id === product.id && i.size === product.size
               ? { ...i, quantity: i.quantity + 1 }
               : i
-          );
+          )
         } else {
-          return [...prevCart, product];
+          return [...prevCart, product]
         }
-      });
-
-      toast({ title: "Producto agregado", description: `${product.name}` });
+      })
+  
+      toast({ title: "Producto agregado", description: `${product.name}` })
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error",
         description: "No se pudo agregar el producto.",
-      });
+      })
     }
-  };
+  }
+  
 
   const updateQuantity = (id: string, size: string | undefined, amount: number) => {
     setCart((prevCart) =>
