@@ -9,8 +9,8 @@ interface POSItem {
   price: number
   quantity: number
   size?: string
-  stock:number
-  qr_code:string
+  stock: number
+  qr_code: string
 }
 
 interface POSCartItemProps {
@@ -22,20 +22,33 @@ interface POSCartItemProps {
 
 export default function POSCartItem({ item, onIncrement, onDecrement, onRemove }: POSCartItemProps) {
   return (
-    <div className="flex items-center justify-between border rounded-md p-3">
+    <div className="flex items-center justify-between border rounded-md p-3 shadow-sm bg-white dark:bg-gray-900">
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{item.name}</div>
-        {item.size && <div className="text-xs text-muted-foreground">Size: {item.size}</div>}
-        <div className="text-sm">${item.price.toFixed(2)}</div>
+        {item.size && <div className="text-xs text-muted-foreground">Talle: {item.size}</div>}
+        <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+          ${item.price.toFixed(2)}
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="flex items-center border rounded-md">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-r-none" onClick={onDecrement}>
+        <div className="flex items-center border rounded-md overflow-hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-r-none"
+            onClick={onDecrement}
+            disabled={item.quantity <= 1}
+          >
             <Minus className="h-3 w-3" />
           </Button>
           <div className="w-8 text-center">{item.quantity}</div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-l-none" onClick={onIncrement}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-l-none"
+            onClick={onIncrement}
+          >
             <Plus className="h-3 w-3" />
           </Button>
         </div>

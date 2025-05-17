@@ -13,7 +13,8 @@ export default function QRScanner({ onScan }: QRScannerProps) {
   const [isScanning, setIsScanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const scannerRef = useRef<any>(null) // `Html5Qrcode` se carga dinámicamente
+  const scannerRef = useRef<any>(null)
+  const lastScannedRef = useRef<string | null>(null)
 
   useEffect(() => {
     return () => {
@@ -44,11 +45,18 @@ export default function QRScanner({ onScan }: QRScannerProps) {
           qrbox: { width: 250, height: 250 },
         },
         (decodedText: string) => {
-          onScan(decodedText)
-          stopScanner()
+          if (decodedText !== lastScannedRef.current) {
+            lastScannedRef.current = decodedText
+            console.log("✅ QR leído:", decodedText)
+            onScan(decodedText)
+
+            setTimeout(() => {
+              lastScannedRef.current = null
+            }, 1500) // evita múltiples lecturas seguidas del mismo código
+          }
         },
         (errorMessage: string) => {
-          console.log("Scan error:", errorMessage)
+          // Silencioso
         }
       )
     } catch (err) {

@@ -29,53 +29,69 @@ export default function POSPage() {
   const { toast } = useToast();
 
   const handleScan = async (code: string) => {
-    setIsScanning(false)
+    setIsScanning(false);
+    console.log("QR leído:", code); // 👉 lo ves en terminal
+  
     try {
-      // Nuevo: buscar por documentId escaneado
       const res = await fetch(
-        `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${code}&populate=*`
-      )
-      const data = await res.json()
+        `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${code}`
+      );
   
-      if (!data.data.length) throw new Error("Producto no encontrado")
+      const data = await res.json();
   
-      const item = data.data[0]
+      if (!data.data.length) {
+        console.error("❌ Producto no encontrado con documentId:", code);
+        toast({
+          variant: "destructive",
+          title: "Producto no encontrado",
+          description: `No se encontró un producto con ID: ${code}`,
+        });
+        return;
+      }
+  
+      const item = data.data[0];
   
       const product = {
         id: item.id.toString(),
         name: item.nombre,
         price: item.precio,
         size: item.talles?.[0] || "M",
-        qr_code: item.qr_code || code, // fallback si no tiene campo
+        qr_code: item.qr_code,
         quantity: 1,
         stock: item.stock,
-      }
+      };
   
       setCart((prevCart) => {
         const existingItem = prevCart.find(
-          (i) => i.id === product.id && i.size === product.size
-        )
+          (i) => i.qr_code === product.qr_code && i.size === product.size
+        );
   
         if (existingItem) {
           return prevCart.map((i) =>
-            i.id === product.id && i.size === product.size
+            i.qr_code === product.qr_code && i.size === product.size
               ? { ...i, quantity: i.quantity + 1 }
               : i
-          )
+          );
         } else {
-          return [...prevCart, product]
+          return [...prevCart, product];
         }
-      })
+      });
   
-      toast({ title: "Producto agregado", description: `${product.name}` })
+      toast({
+        title: "Producto agregado",
+        description: `${product.name}`,
+      });
     } catch (error) {
+      console.error("❌ ERROR escaneando QR:", error);
       toast({
         variant: "destructive",
         title: "Error",
         description: "No se pudo agregar el producto.",
-      })
+      });
     }
-  }
+  };
+  
+  
   
 
   const updateQuantity = (id: string, size: string | undefined, amount: number) => {

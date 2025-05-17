@@ -4,18 +4,11 @@ import ProductDetails from "@/components/shop/product-details"
 import RelatedProducts from "@/components/shop/related-products"
 import { Skeleton } from "@/components/ui/skeleton"
 
-interface ProductPageProps {
-  params: {
-    id: string
-  }
-}
+export default async function ProductPage({ params }: { params: { id: string } }) {
+  // ⚠️ IMPORTANTE: esto debe estar dentro del componente y esperar async
+  const id = params.id
 
-export default async function ProductPage({ params }: ProductPageProps) {
-  const { id } = params
-
-  if (!id) {
-    notFound()
-  }
+  if (!id) notFound()
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -51,15 +44,13 @@ function ProductDetailsSkeleton() {
 function RelatedProductsSkeleton() {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {Array(4)
-        .fill(0)
-        .map((_, i) => (
-          <div key={i}>
-            <Skeleton className="h-48 w-full mb-2" />
-            <Skeleton className="h-4 w-3/4 mb-1" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
-        ))}
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i}>
+          <Skeleton className="h-48 w-full mb-2" />
+          <Skeleton className="h-4 w-3/4 mb-1" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      ))}
     </div>
   )
 }
