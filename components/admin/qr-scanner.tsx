@@ -1,20 +1,19 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { QrCode, Camera, CameraOff } from "lucide-react"
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { QrCode, Camera, CameraOff } from "lucide-react";
 
 interface QRScannerProps {
-  onScan: (code: string) => void
+  onScan: (code: string) => void;
 }
 
 export default function QRScanner({ onScan }: QRScannerProps) {
-  const [isScanning, setIsScanning] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const scannerRef = useRef<any>(null)
-  const lastScannedRef = useRef<string | null>(null)
+  const [isScanning, setIsScanning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const scannerRef = useRef<any>(null);
+  const lastScannedRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -22,20 +21,20 @@ export default function QRScanner({ onScan }: QRScannerProps) {
         scannerRef.current
           .stop()
           .then(() => scannerRef.current.clear())
-          .catch((err: any) => console.error("Error stopping scanner:", err))
+          .catch((err: any) => console.error("Error stopping scanner:", err));
       }
-    }
-  }, [isScanning])
+    };
+  }, [isScanning]);
 
   const startScanner = async () => {
-    setError(null)
-    setIsScanning(true)
+    setError(null);
+    setIsScanning(true);
 
     try {
-      const { Html5Qrcode } = await import("html5-qrcode")
+      const { Html5Qrcode } = await import("html5-qrcode");
 
       if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode("qr-reader")
+        scannerRef.current = new Html5Qrcode("qr-reader");
       }
 
       await scannerRef.current.start(
@@ -46,42 +45,41 @@ export default function QRScanner({ onScan }: QRScannerProps) {
         },
         (decodedText: string) => {
           if (decodedText !== lastScannedRef.current) {
-            lastScannedRef.current = decodedText
-            console.log("✅ QR leído:", decodedText)
-            onScan(decodedText)
-
+            lastScannedRef.current = decodedText;
+            onScan(decodedText);
             setTimeout(() => {
-              lastScannedRef.current = null
-            }, 1500) // evita múltiples lecturas seguidas del mismo código
+              lastScannedRef.current = null;
+            }, 1500);
           }
         },
-        (errorMessage: string) => {
-          // Silencioso
-        }
-      )
+        () => {}
+      );
     } catch (err) {
-      console.error("Error starting scanner:", err)
-      setError("No se pudo iniciar la cámara. Verificá los permisos.")
-      setIsScanning(false)
+      console.error("Error iniciando el scanner:", err);
+      setError("No se pudo iniciar la cámara. Verificá los permisos del navegador.");
+      setIsScanning(false);
     }
-  }
+  };
 
   const stopScanner = async () => {
     if (scannerRef.current) {
       try {
-        await scannerRef.current.stop()
-        await scannerRef.current.clear()
+        await scannerRef.current.stop();
+        await scannerRef.current.clear();
       } catch (err) {
-        console.error("Error al detener la cámara:", err)
+        console.error("Error al detener la cámara:", err);
       }
     }
-    setIsScanning(false)
-  }
+    setIsScanning(false);
+  };
+
+  // ⛔️ PREVENIR RENDER SSR: clave
+  if (typeof window === "undefined") return null;
 
   return (
     <div>
       <Card className="overflow-hidden">
-        <div id="qr-reader" ref={containerRef} className="w-full h-64 relative">
+        <div id="qr-reader" className="w-full h-64 relative">
           {!isScanning && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted">
               <QrCode className="h-12 w-12 text-muted-foreground mb-4" />
@@ -105,5 +103,5 @@ export default function QRScanner({ onScan }: QRScannerProps) {
         )}
       </div>
     </div>
-  )
+  );
 }
