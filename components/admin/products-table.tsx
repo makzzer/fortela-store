@@ -21,33 +21,38 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useProductos
- } from "@/app/context/ProductosContext";
-export default function ProductsTable() {
+import { useProductos } from "@/app/context/ProductosContext";
+
+interface Props {
+  filtro: string;
+}
+
+export default function ProductsTable({ filtro }: Props) {
   const productos = useProductos();
 
+  const productosFiltrados = productos.filter((p) =>
+    p.nombre.toLowerCase().includes(filtro.toLowerCase())
+  );
 
-
-  
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Product</TableHead>
-          <TableHead>Category</TableHead>
-          <TableHead>Price</TableHead>
+          <TableHead>Producto</TableHead>
+          <TableHead>Género</TableHead>
+          <TableHead>Precio</TableHead>
           <TableHead>Stock</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
+          <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {productos.map((product) => (
+        {productosFiltrados.map((product) => (
           <TableRow key={product.id}>
             <TableCell>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-md overflow-hidden bg-muted relative">
                   <Image
-                    src={"/placeholder.svg"} // reemplazá si después tenés imagen real
+                    src={"/placeholder.svg"} // Reemplazá si tenés imagen real
                     alt={product.nombre}
                     fill
                     className="object-cover"
@@ -60,7 +65,7 @@ export default function ProductsTable() {
             <TableCell>${product.precio.toFixed(2)}</TableCell>
             <TableCell>
               <Badge variant={product.stock > 10 ? "outline" : "destructive"}>
-                {product.stock} in stock
+                {product.stock} en stock
               </Badge>
             </TableCell>
             <TableCell className="text-right">
@@ -68,20 +73,20 @@ export default function ProductsTable() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon">
                     <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">Acciones</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                  <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link href={`/admin/products/${product.documentId}`}>
-                      <Edit className="mr-2 h-4 w-4" /> Edit
+                      <Edit className="mr-2 h-4 w-4" /> Editar
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href={`/admin/stock?id=${product.documentId}`}>
-                      <QrCode className="mr-2 h-4 w-4" /> Manage Stock
+                      <QrCode className="mr-2 h-4 w-4" /> Gestionar stock
                     </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
