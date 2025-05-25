@@ -122,17 +122,40 @@ export default function POSPage() {
       if (!res.ok) throw new Error("Error al crear la orden");
 
       for (const item of cart) {
-        const getRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.id}`);
+        const getRes = await fetch(
+          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}`
+        );
         const data = await getRes.json();
-        const currentStock = data?.data?.stock;
+        const producto = data?.data?.[0];
 
-        if (currentStock !== undefined && currentStock !== null) {
-          const newStock = currentStock - item.quantity;
-          await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: { stock: newStock >= 0 ? newStock : 0 } }),
-          });
+        if (!producto) {
+          console.error("❌ Producto no encontrado al actualizar stock:", item.documentId);
+          continue;
+        }
+
+        const productoId = producto.documentId;
+        const stockActual = producto.stock;
+
+        if (typeof stockActual === "number") {
+          const newStock = stockActual - item.quantity;
+          const putRes = await fetch(
+            `https://vps-4937880-x.dattaweb.com/api/productos/${productoId}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                data: {
+                  stock: newStock >= 0 ? newStock : 0,
+                },
+              }),
+            }
+          );
+
+          if (!putRes.ok) {
+            console.error(`❌ Falló actualización de stock para ${productoId}`);
+          }
+        } else {
+          console.warn("⚠️ Stock inválido para producto:", productoId);
         }
       }
 
