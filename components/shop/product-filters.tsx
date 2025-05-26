@@ -6,79 +6,74 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 
-const categories = [
-  { id: "boys", label: "Boys Uniforms" },
-  { id: "girls", label: "Girls Uniforms" },
-  { id: "accessories", label: "Accessories" },
+const generos = [
+  { id: "niño", label: "Niño" },
+  { id: "niña", label: "Niña" },
+  { id: "unisex", label: "Unisex" },
 ]
 
-const sizes = [
-  { id: "xs", label: "XS" },
-  { id: "s", label: "S" },
-  { id: "m", label: "M" },
-  { id: "l", label: "L" },
-  { id: "xl", label: "XL" },
+const talles = [
+  { id: "XS", label: "XS" },
+  { id: "S", label: "S" },
+  { id: "M", label: "M" },
+  { id: "L", label: "L" },
+  { id: "XL", label: "XL" },
 ]
 
 export default function ProductFilters() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Initialize state from URL params
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(searchParams.get("category")?.split(",") || [])
+  const [selectedGeneros, setSelectedGeneros] = useState<string[]>(searchParams.get("genero")?.split(",") || [])
+  const [selectedTalles, setSelectedTalles] = useState<string[]>(searchParams.get("talle")?.split(",") || [])
 
-  const [selectedSizes, setSelectedSizes] = useState<string[]>(searchParams.get("size")?.split(",") || [])
-
-  const handleCategoryChange = (category: string, checked: boolean) => {
-    setSelectedCategories((prev) => (checked ? [...prev, category] : prev.filter((c) => c !== category)))
+  const handleGeneroChange = (genero: string, checked: boolean) => {
+    setSelectedGeneros((prev) => (checked ? [...prev, genero] : prev.filter((g) => g !== genero)))
   }
 
-  const handleSizeChange = (size: string, checked: boolean) => {
-    setSelectedSizes((prev) => (checked ? [...prev, size] : prev.filter((s) => s !== size)))
+  const handleTalleChange = (talle: string, checked: boolean) => {
+    setSelectedTalles((prev) => (checked ? [...prev, talle] : prev.filter((t) => t !== talle)))
   }
 
   const applyFilters = () => {
     const params = new URLSearchParams()
 
-    if (selectedCategories.length > 0) {
-      params.set("category", selectedCategories.join(","))
+    if (selectedGeneros.length > 0) {
+      params.set("genero", selectedGeneros.join(","))
     }
 
-    if (selectedSizes.length > 0) {
-      params.set("size", selectedSizes.join(","))
+    if (selectedTalles.length > 0) {
+      params.set("talle", selectedTalles.join(","))
     }
 
     router.push(`/shop?${params.toString()}`)
   }
 
   const clearFilters = () => {
-    setSelectedCategories([])
-    setSelectedSizes([])
+    setSelectedGeneros([])
+    setSelectedTalles([])
     router.push("/shop")
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="font-medium mb-4">Filters</h3>
+        <h3 className="font-medium mb-4">Filtros</h3>
 
-        <Accordion type="multiple" defaultValue={["categories", "sizes"]} className="w-full">
-          <AccordionItem value="categories">
-            <AccordionTrigger>Categories</AccordionTrigger>
+        <Accordion type="multiple" defaultValue={[]} className="w-full">
+          <AccordionItem value="genero">
+            <AccordionTrigger>Sexo</AccordionTrigger>
             <AccordionContent>
               <div className="space-y-2">
-                {categories.map((category) => (
-                  <div key={category.id} className="flex items-center space-x-2">
+                {generos.map((g) => (
+                  <div key={g.id} className="flex items-center space-x-2">
                     <Checkbox
-                      id={`category-${category.id}`}
-                      checked={selectedCategories.includes(category.id)}
-                      onCheckedChange={(checked) => handleCategoryChange(category.id, checked as boolean)}
+                      id={`genero-${g.id}`}
+                      checked={selectedGeneros.includes(g.id)}
+                      onCheckedChange={(checked) => handleGeneroChange(g.id, checked as boolean)}
                     />
-                    <label
-                      htmlFor={`category-${category.id}`}
-                      className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                      {category.label}
+                    <label htmlFor={`genero-${g.id}`} className="text-sm leading-none">
+                      {g.label}
                     </label>
                   </div>
                 ))}
@@ -86,36 +81,38 @@ export default function ProductFilters() {
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="sizes">
-            <AccordionTrigger>Sizes</AccordionTrigger>
+          <AccordionItem value="talle">
+            <AccordionTrigger>Talle</AccordionTrigger>
             <AccordionContent>
               <div className="space-y-2">
-                {sizes.map((size) => (
-                  <div key={size.id} className="flex items-center space-x-2">
+                {talles.map((t) => (
+                  <div key={t.id} className="flex items-center space-x-2">
                     <Checkbox
-                      id={`size-${size.id}`}
-                      checked={selectedSizes.includes(size.id)}
-                      onCheckedChange={(checked) => handleSizeChange(size.id, checked as boolean)}
+                      id={`talle-${t.id}`}
+                      checked={selectedTalles.includes(t.id)}
+                      onCheckedChange={(checked) => handleTalleChange(t.id, checked as boolean)}
                     />
-                    <label
-                      htmlFor={`size-${size.id}`}
-                      className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                      {size.label}
+                    <label htmlFor={`talle-${t.id}`} className="text-sm leading-none">
+                      {t.label}
                     </label>
                   </div>
                 ))}
               </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="colegio">
+            <AccordionTrigger>Colegio</AccordionTrigger>
+            <AccordionContent>
+              <p className="text-sm text-muted-foreground">(Próximamente)</p>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
       </div>
 
       <div className="flex flex-col gap-2">
-        <Button onClick={applyFilters}>Apply Filters</Button>
-        <Button variant="outline" onClick={clearFilters}>
-          Clear Filters
-        </Button>
+        <Button onClick={applyFilters}>Aplicar filtros</Button>
+        <Button variant="outline" onClick={clearFilters}>Limpiar</Button>
       </div>
     </div>
   )
