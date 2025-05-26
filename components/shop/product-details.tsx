@@ -35,6 +35,7 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
           name: productData.nombre,
           description: productData.descripcion,
           price: productData.precio,
+          stock: productData.stock ?? 0,
           image: "/bana.webp", // reemplazá si usás media real
           sizes: productData.talles || [],
         })
@@ -77,7 +78,13 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
       <div>
         <h1 className="text-3xl font-bold mb-4">{product.name}</h1>
         <p className="text-muted-foreground mb-4">{product.description}</p>
-        <p className="text-2xl font-semibold mb-6">${product.price.toFixed(2)}</p>
+        <p className="text-2xl font-semibold mb-2">${product.price.toFixed(2)}</p>
+
+        <p className={`text-sm mb-6 ${product.stock <= 5 ? "text-red-500 font-medium" : "text-green-600"}`}>
+          {product.stock <= 5
+            ? `¡Quedan solo ${product.stock} unidad${product.stock === 1 ? "" : "es"}!`
+            : `Quedan ${product.stock} unidades`}
+        </p>
 
         <AddToCartButton product={product} />
 

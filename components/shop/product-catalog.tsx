@@ -22,6 +22,7 @@ const getProducts = async () => {
     name: item.nombre,
     description: item.descripcion,
     price: item.precio,
+    stock: item.stock ?? 0,
     image: "/bana.webp", // reemplazá si usás media real
     category: item.genero || "unisex",
     sizes: item.talles || [],
@@ -82,6 +83,12 @@ export default function ProductCatalog() {
               <h3 className="font-medium text-lg mb-1">{product.name}</h3>
               <p className="text-muted-foreground text-sm mb-2">{product.description}</p>
               <p className="font-semibold">${product.price.toFixed(2)}</p>
+
+              <p className={`text-sm mt-1 ${product.stock <= 5 ? "text-red-500 font-medium" : "text-green-600"}`}>
+                {product.stock <= 5
+                  ? `¡Quedan solo ${product.stock} unidad${product.stock === 1 ? "" : "es"}!`
+                  : `Quedan ${product.stock} unidades`}
+              </p>
             </CardContent>
             <CardFooter className="p-4 pt-0 flex flex-col gap-2">
               <AddToCartButton product={product} />
