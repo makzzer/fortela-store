@@ -4,9 +4,7 @@ import React, { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { useToast } from "@/components/ui/use-toast"
-import { Plus, Minus } from "lucide-react"
+import Swal from "sweetalert2"
 
 interface StockUpdateFormProps {
   productId: string // documentId
@@ -14,107 +12,145 @@ interface StockUpdateFormProps {
 
 export default function StockUpdateForm({ productId }: StockUpdateFormProps) {
   const [operation, setOperation] = useState<"add" | "remove">("add")
-  const [quantity, setQuantity] = useState(1)
+  const [quantity, setQuantity] = useState<number | "">("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [producto, setProducto] = useState<any>(null)
-  const { toast } = useToast()
+  const [producto, setProducto] = useState<{
+    id: number
+    documentId: string
+    nombre: string
+    stock: number
+  } | null>(null)
 
-  // Fetch product by documentId
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const res = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${productId}`)
+        const res = await fetch(
+          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${productId}`
+        )
         const data = await res.json()
         const productoData = data?.data?.[0]
-        if (productoData) setProducto(productoData)
-        else throw new Error("Producto no encontrado")
+
+        if (!productoData)
+          throw new Error("Producto no encontrado")
+
+        setProducto({
+          id: productoData.id,
+          documentId: productoData.documentId,
+          nombre: productoData.nombre || "Sin nombre",
+          stock: productoData.stock || 0,
+        })
       } catch (error) {
         console.error(error)
-        toast({
-          variant: "destructive",
+        Swal.fire({
+          icon: "error",
           title: "Error",
-          description: "No se pudo cargar el producto escaneado.",
+          text: "No se pudo cargar el producto escaneado.",
         })
       }
     }
 
     if (productId) fetchProduct()
-  }, [productId, toast])
+  }, [productId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!producto) return
-
-    const currentStock = producto.stock || 0
-    const newStock = operation === "add"
-      ? currentStock + quantity
-      : Math.max(0, currentStock - quantity)
+    if (!producto || quantity === "") return
 
     setIsSubmitting(true)
 
     try {
-      const res = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${producto.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ data: { stock: newStock } }),
-      })
+      // Obtener el producto actualizado antes de hacer el PUT
+      const getRes = await fetch(
+        `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${producto.documentId}`
+      )
+      const getData = await getRes.json()
+      const fetchedProduct = getData?.data?.[0]
 
-      if (!res.ok) throw new Error("Error actualizando el stock")
+      if (!fetchedProduct) throw new Error("Producto no encontrado al actualizar stock")
 
-      toast({
+      const stockActual = fetchedProduct.stock
+      const idNumerico = fetchedProduct.documentId
+
+      const newStock =
+        operation === "add"
+          ? stockActual + quantity
+          : Math.max(0, stockActual - quantity)
+
+      const putRes = await fetch(
+        `https://vps-4937880-x.dattaweb.com/api/productos/${idNumerico}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            data: {
+              stock: newStock,
+            },
+          }),
+        }
+      )
+
+      if (!putRes.ok) throw new Error("Error actualizando el stock")
+
+      await Swal.fire({
+        icon: "success",
         title: "Stock actualizado",
-        description: `Nuevo stock para ${producto.nombre}: ${newStock}`,
+        text: `Nuevo stock para ${fetchedProduct.nombre}: ${newStock}`,
+        confirmButtonText: "OK",
       })
 
-      // actualizar estado local para reflejar cambio inmediato
-      setProducto((prev: any) => ({
-        ...prev,
+      setProducto({
+        ...producto,
         stock: newStock,
-      }))
-
-      setQuantity(1)
+      })
+      setQuantity("")
     } catch (error) {
-      toast({
-        variant: "destructive",
+      console.error(error)
+      Swal.fire({
+        icon: "error",
         title: "Error",
-        description: "No se pudo actualizar el stock.",
+        text: "No se pudo actualizar el stock.",
       })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  if (!producto) return <p className="text-muted-foreground text-sm">Cargando producto...</p>
+  if (!producto)
+    return <p className="text-muted-foreground text-sm">Cargando producto...</p>
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="text-sm">
-        <p><span className="font-semibold">Producto:</span> {producto.nombre}</p>
-        <p><span className="font-semibold">Stock actual:</span> {producto.stock}</p>
+        <p>
+          <span className="font-semibold">Producto:</span> {producto.nombre}
+        </p>
+        <p>
+          <span className="font-semibold">Stock actual:</span> {producto.stock}
+        </p>
       </div>
 
       <div className="space-y-2">
-        <Label>Operación</Label>
-        <RadioGroup
-          value={operation}
-          onValueChange={(value) => setOperation(value as "add" | "remove")}
-          className="flex gap-4"
-        >
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="add" id="add" />
-            <Label htmlFor="add" className="flex items-center cursor-pointer">
-              <Plus className="mr-1 h-4 w-4" /> Sumar stock
-            </Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="remove" id="remove" />
-            <Label htmlFor="remove" className="flex items-center cursor-pointer">
-              <Minus className="mr-1 h-4 w-4" /> Restar stock
-            </Label>
-          </div>
-        </RadioGroup>
+        <Label>Elegí operación</Label>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={operation === "add" ? "default" : "outline"}
+            onClick={() => setOperation("add")}
+            className="flex-1"
+          >
+            + Sumar stock
+          </Button>
+          <Button
+            type="button"
+            variant={operation === "remove" ? "default" : "outline"}
+            onClick={() => setOperation("remove")}
+            className="flex-1"
+          >
+            – Restar stock
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -124,11 +160,13 @@ export default function StockUpdateForm({ productId }: StockUpdateFormProps) {
           type="number"
           min="1"
           value={quantity}
-          onChange={(e) => setQuantity(Number.parseInt(e.target.value) || 1)}
+          onChange={(e) =>
+            setQuantity(e.target.value === "" ? "" : parseInt(e.target.value))
+          }
         />
       </div>
 
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
+      <Button type="submit" className="w-full" disabled={isSubmitting || quantity === ""}>
         {isSubmitting ? "Actualizando..." : "Actualizar stock"}
       </Button>
     </form>
