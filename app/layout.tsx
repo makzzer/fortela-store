@@ -12,6 +12,8 @@ import { ProductosProvider } from "./context/ProductosContext";
 import { CategoriasProvider } from "./context/CategoriasContext";
 import { OrdenesProvider } from "@/app/context/OrdenesContext";
 
+import { AuthProvider } from "./context/AutContext";
+
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -29,9 +31,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ProductosProvider>
+          <AuthProvider>
           <CategoriasProvider>
             <OrdenesProvider>
               <CartProvider>
+                
                 <div className="flex min-h-screen flex-col">
                   <Header />
                   <main className="flex-1">{children}</main>
@@ -41,6 +45,7 @@ export default function RootLayout({
               </CartProvider>
             </OrdenesProvider>
           </CategoriasProvider>
+          </AuthProvider>
         </ProductosProvider>
       </body>
     </html>
