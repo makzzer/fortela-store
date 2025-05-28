@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
 import { ShoppingBag, ArrowRight, AlertCircle } from "lucide-react"
+import { useItemOrden } from "../context/ItemOrdenContext"
 
 export default function CartPage() {
   const { cart, clearCart } = useCart()
   const { toast } = useToast()
   const [isCheckingOut, setIsCheckingOut] = useState(false)
+  const { setOrden } = useItemOrden()
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const shipping = subtotal > 0 ? 5.99 : 0
@@ -22,7 +24,6 @@ export default function CartPage() {
     setIsCheckingOut(true)
 
     try {
-      const productos = cart.map((item) => item.documentId)
       const fecha = new Date().toISOString()
 
       // 1. Crear la orden
@@ -35,7 +36,6 @@ export default function CartPage() {
             estado: "pendiente",
             tipo_venta: "online",
             fecha,
-            fortela_productos: productos,
             fortela_cliente: 1,
           },
         }),
@@ -43,13 +43,56 @@ export default function CartPage() {
 
       if (!res.ok) throw new Error("Error al crear la orden")
 
-      // 2. Actualizar el stock
+      const ordenData = await res.json()
+      const ordenId = ordenData.data.id
+
+      const items: any[] = []
+
+      // 2. Crear los items comprados relacionados a la orden
+      for (const item of cart) {
+        const productRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}`)
+        const productData = await productRes.json()
+        const productoId = productData?.data?.[0]?.id
+
+        if (!productoId) {
+          console.error(`No se encontró producto con documentId: ${item.documentId}`)
+          continue
+        }
+
+        const itemRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados?populate=*", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data: {
+              cantidad: item.quantity,
+              fortela_producto: productoId,
+              fortela_orden: ordenId,
+            },
+          }),
+        })
+
+        if (itemRes.ok) {
+          items.push({
+            id: 0,
+            cantidad: item.quantity,
+            producto: {
+              id: productoId,
+              nombre: item.name,
+              precio: item.price,
+              descripcion: "-",
+              talle: item.size,
+            },
+          })
+        }
+      }
+
+      // 3. Actualizar el stock
       for (const item of cart) {
         const getRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`)
         const data = await getRes.json()
         const currentStock = data?.data?.stock
 
-        if (currentStock !== undefined && currentStock !== null) {
+        if (typeof currentStock === "number") {
           const newStock = currentStock - item.quantity
           await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`, {
             method: "PUT",
@@ -62,6 +105,16 @@ export default function CartPage() {
           })
         }
       }
+
+      // 4. Guardar en el context
+      setOrden({
+        id: ordenId,
+        estado: "pendiente",
+        total,
+        fecha,
+        tipo_venta: "online",
+        items,
+      })
 
       toast({
         title: "Orden creada correctamente",
