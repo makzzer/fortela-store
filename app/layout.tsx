@@ -13,6 +13,7 @@ import { CategoriasProvider } from "./context/CategoriasContext";
 import { OrdenesProvider } from "@/app/context/OrdenesContext";
 
 import { AuthProvider } from "./context/AutContext";
+import { ItemOrdenProvider } from "./context/ItemOrdenContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -31,6 +32,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ProductosProvider>
+          <ItemOrdenProvider>
           <AuthProvider>
           <CategoriasProvider>
             <OrdenesProvider>
@@ -46,6 +48,7 @@ export default function RootLayout({
             </OrdenesProvider>
           </CategoriasProvider>
           </AuthProvider>
+          </ItemOrdenProvider>
         </ProductosProvider>
       </body>
     </html>
