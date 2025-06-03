@@ -2,13 +2,6 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { useCart } from "@/components/store/cart-provider"
 import { ShoppingCart } from "lucide-react"
@@ -67,20 +60,7 @@ export default function AddToCartButton({ product, showSelect = true }: AddToCar
 
   return (
     <div className="w-full space-y-3">
-      {showSelect && Array.isArray(product.sizes) && product.sizes.length > 0 && (
-        <Select value={size} onValueChange={setSize}>
-          <SelectTrigger>
-            <SelectValue placeholder="Seleccionar talle" />
-          </SelectTrigger>
-          <SelectContent>
-            {product.sizes.map((size) => (
-              <SelectItem key={size} value={size}>
-                {size}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+
 
       <Button className="w-full" onClick={handleAddToCart} disabled={isAdding}>
         {isAdding ? "Agregando..." : "Agregar al carrito"}
