@@ -9,7 +9,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { CartProvider } from "@/components/store/cart-provider";
 
 import { ProductosProvider } from "./context/ProductosContext";
-import { CategoriasProvider } from "./context/CategoriasContext";
 import { OrdenesProvider } from "@/app/context/OrdenesContext";
 
 import { AuthProvider } from "./context/AutContext";
@@ -34,7 +33,6 @@ export default function RootLayout({
         <ProductosProvider>
           <ItemOrdenProvider>
           <AuthProvider>
-          <CategoriasProvider>
             <OrdenesProvider>
               <CartProvider>
                 
@@ -46,7 +44,6 @@ export default function RootLayout({
                 <Toaster />
               </CartProvider>
             </OrdenesProvider>
-          </CategoriasProvider>
           </AuthProvider>
           </ItemOrdenProvider>
         </ProductosProvider>

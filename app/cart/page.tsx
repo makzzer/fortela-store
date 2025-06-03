@@ -1,3 +1,4 @@
+// ✅ Checkout adaptado para descontar stock por talle y actualizar stock total
 "use client"
 
 import { useState } from "react"
@@ -20,13 +21,56 @@ export default function CartPage() {
   const shipping = subtotal > 0 ? 5.99 : 0
   const total = subtotal + shipping
 
+  const discountStockByTalle = async (item) => {
+    const response = await fetch(
+      `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate=*`
+    )
+    const resData = await response.json()
+    const producto = resData?.data?.[0]
+
+    if (!producto || !producto.id) return
+
+    const variantes = producto.variantesPorTalle || []
+
+    const nuevasVariantes = variantes.map((v) => {
+      if (v.talle === item.size) {
+        return {
+          id: v.id,
+          talle: v.talle,
+          cantidad: Math.max(0, v.cantidad - item.quantity),
+        }
+      }
+      return v
+    })
+
+    const nuevoStockTotal = nuevasVariantes.reduce(
+      (sum:any, v:any) => sum + v.cantidad,
+      0
+    )
+
+    await fetch(
+      `https://vps-4937880-x.dattaweb.com/api/productos/${producto.id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          data: {
+            variantesPorTalle: nuevasVariantes,
+            stock: nuevoStockTotal,
+          },
+        }),
+      }
+    )
+  }
+
   const handleCheckout = async () => {
     setIsCheckingOut(true)
 
     try {
       const fecha = new Date().toISOString()
 
-      // 1. Crear la orden
       const res = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,9 +92,10 @@ export default function CartPage() {
 
       const items: any[] = []
 
-      // 2. Crear los items comprados relacionados a la orden
       for (const item of cart) {
-        const productRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}`)
+        const productRes = await fetch(
+          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}`
+        )
         const productData = await productRes.json()
         const productoId = productData?.data?.[0]?.id
 
@@ -59,7 +104,7 @@ export default function CartPage() {
           continue
         }
 
-        const itemRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados?populate=*", {
+        const itemRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -86,27 +131,29 @@ export default function CartPage() {
         }
       }
 
-      // 3. Actualizar el stock
-      for (const item of cart) {
-        const getRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`)
-        const data = await getRes.json()
-        const currentStock = data?.data?.stock
+      const getItemsRes = await fetch(
+        `https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados?filters[fortela_orden][id][$eq]=${ordenId}`
+      )
+      const itemsData = await getItemsRes.json()
+      const itemIds = itemsData?.data?.map((item: any) => item.id)
 
-        if (typeof currentStock === "number") {
-          const newStock = currentStock - item.quantity
-          await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              data: {
-                stock: newStock >= 0 ? newStock : 0,
-              },
-            }),
-          })
-        }
+      if (Array.isArray(itemIds) && itemIds.length > 0) {
+        await fetch(`https://vps-4937880-x.dattaweb.com/api/fortela-ordenes/${ordenId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data: {
+              fortela_items_comprados: itemIds,
+            },
+          }),
+        })
       }
 
-      // 4. Guardar en el context
+      // ✅ Descontar stock por talle
+      for (const item of cart) {
+        await discountStockByTalle(item)
+      }
+
       setOrden({
         id: ordenId,
         estado: "pendiente",
