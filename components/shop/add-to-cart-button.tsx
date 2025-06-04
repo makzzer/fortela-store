@@ -12,25 +12,25 @@ interface Product {
   name: string
   price: number
   image: string
+  size?: string
   sizes?: string[]
 }
 
 interface AddToCartButtonProps {
   product: Product
-  showSelect?: boolean
+  showSelect?: boolean // ya no se usa porque se pasa false desde el catálogo
 }
 
-export default function AddToCartButton({ product, showSelect = true }: AddToCartButtonProps) {
-  const [size, setSize] = useState(product.sizes?.[0] || "")
-  const [isAdding, setIsAdding] = useState(false)
+export default function AddToCartButton({ product }: AddToCartButtonProps) {
   const { addToCart } = useCart()
   const { toast } = useToast()
+  const [isAdding, setIsAdding] = useState(false)
 
   const handleAddToCart = () => {
-    if (product.sizes?.length && !size) {
+    if (!product.size) {
       toast({
         variant: "destructive",
-        title: "Por favor seleccioná un talle",
+        title: "Seleccioná un talle",
         description: "Tenés que seleccionar un talle antes de agregar el producto al carrito.",
       })
       return
@@ -46,22 +46,20 @@ export default function AddToCartButton({ product, showSelect = true }: AddToCar
         price: product.price,
         image: product.image,
         quantity: 1,
-        size: size || undefined,
+        size: product.size,
       })
 
       toast({
         title: "Producto agregado",
-        description: `${product.name} fue agregado al carrito.`,
+        description: `${product.name} (Talle ${product.size}) fue agregado al carrito.`,
       })
 
       setIsAdding(false)
-    }, 500)
+    }, 300)
   }
 
   return (
-    <div className="w-full space-y-3">
-
-
+    <div className="w-full">
       <Button className="w-full" onClick={handleAddToCart} disabled={isAdding}>
         {isAdding ? "Agregando..." : "Agregar al carrito"}
         {!isAdding && <ShoppingCart className="ml-2 h-4 w-4" />}

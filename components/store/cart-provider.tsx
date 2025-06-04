@@ -47,17 +47,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const existingItemIndex = prevCart.findIndex(
         (cartItem) => cartItem.documentId === item.documentId && cartItem.size === item.size
       )
-
+  
       if (existingItemIndex >= 0) {
         const newCart = [...prevCart]
-        newCart[existingItemIndex].quantity += item.quantity
+        const existingQuantity = newCart[existingItemIndex].quantity || 0
+        const incomingQuantity = item.quantity || 1
+        newCart[existingItemIndex].quantity = existingQuantity + incomingQuantity
         return newCart
       } else {
-        return [...prevCart, item]
+        return [...prevCart, { ...item, quantity: item.quantity || 1 }]
       }
     })
   }
-
+  
   const removeFromCart = (documentId: string, size?: string) => {
     setCart((prevCart) =>
       prevCart.filter((item) => !(item.documentId === documentId && item.size === size))

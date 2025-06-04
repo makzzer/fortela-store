@@ -1,4 +1,3 @@
-// ✅ Checkout adaptado para descontar stock por talle y actualizar stock total
 "use client"
 
 import { useState } from "react"
@@ -9,159 +8,116 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
 import { ShoppingBag, ArrowRight, AlertCircle } from "lucide-react"
-import { useItemOrden } from "../context/ItemOrdenContext"
 
 export default function CartPage() {
   const { cart, clearCart } = useCart()
   const { toast } = useToast()
   const [isCheckingOut, setIsCheckingOut] = useState(false)
-  const { setOrden } = useItemOrden()
 
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const subtotal = cart.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0)
   const shipping = subtotal > 0 ? 5.99 : 0
   const total = subtotal + shipping
 
-  const discountStockByTalle = async (item) => {
-    const response = await fetch(
-      `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate=*`
-    )
-    const resData = await response.json()
-    const producto = resData?.data?.[0]
-
-    if (!producto || !producto.id) return
-
-    const variantes = producto.variantesPorTalle || []
-
-    const nuevasVariantes = variantes.map((v) => {
-      if (v.talle === item.size) {
-        return {
-          id: v.id,
-          talle: v.talle,
-          cantidad: Math.max(0, v.cantidad - item.quantity),
-        }
-      }
-      return v
-    })
-
-    const nuevoStockTotal = nuevasVariantes.reduce(
-      (sum:any, v:any) => sum + v.cantidad,
-      0
-    )
-
-    await fetch(
-      `https://vps-4937880-x.dattaweb.com/api/productos/${producto.id}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          data: {
-            variantesPorTalle: nuevasVariantes,
-            stock: nuevoStockTotal,
-          },
-        }),
-      }
-    )
-  }
-
   const handleCheckout = async () => {
     setIsCheckingOut(true)
-
     try {
       const fecha = new Date().toISOString()
+      console.log("🟢 Iniciando checkout...")
 
-      const res = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
+      const ordenPayload = {
+        data: {
+          total,
+          estado: "pendiente",
+          tipo_venta: "online",
+          fecha,
+          fortela_cliente: 2, // ⚠️ Confirmado que funciona
+        },
+      }
+
+      console.log("📦 Payload de orden:", JSON.stringify(ordenPayload, null, 2))
+
+      const ordenRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: {
-            total,
-            estado: "pendiente",
-            tipo_venta: "online",
-            fecha,
-            fortela_cliente: 1,
-          },
-        }),
+        body: JSON.stringify(ordenPayload),
       })
 
-      if (!res.ok) throw new Error("Error al crear la orden")
+      const ordenJson = await ordenRes.json()
+      console.log("📨 Respuesta bruta orden:", JSON.stringify(ordenJson, null, 2))
+      if (!ordenRes.ok) throw new Error("Error al crear la orden")
 
-      const ordenData = await res.json()
-      const ordenId = ordenData.data.id
-
-      const items: any[] = []
+      const ordenId: number = ordenJson.data.id
 
       for (const item of cart) {
-        const productRes = await fetch(
-          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}`
-        )
-        const productData = await productRes.json()
-        const productoId = productData?.data?.[0]?.id
+        console.log(`🛒 Procesando item ${item.documentId} talle ${item.size}`)
 
-        if (!productoId) {
-          console.error(`No se encontró producto con documentId: ${item.documentId}`)
+        const productoRes = await fetch(
+          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate=*`
+        )
+        const productoJson = await productoRes.json()
+        const producto = productoJson?.data?.[0]
+
+        if (!producto) {
+          console.warn("❌ Producto no encontrado:", item.documentId)
           continue
         }
+
+        const productoId = producto.id
+        console.log(`✅ Producto encontrado con ID: ${productoId}`)
+
+        const itemPayload = {
+          data: {
+            cantidad: item.quantity,
+            fortela_producto: productoId,
+            fortela_orden: ordenId,
+            talle: item.size, // ⚠️ Este campo DEBE existir en la colección
+          },
+        }
+
+        console.log("📤 Payload item comprado:", JSON.stringify(itemPayload, null, 2))
 
         const itemRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            data: {
-              cantidad: item.quantity,
-              fortela_producto: productoId,
-              fortela_orden: ordenId,
-            },
-          }),
+          body: JSON.stringify(itemPayload),
         })
 
-        if (itemRes.ok) {
-          items.push({
-            id: 0,
-            cantidad: item.quantity,
-            producto: {
-              id: productoId,
-              nombre: item.name,
-              precio: item.price,
-              descripcion: "-",
-              talle: item.size,
-            },
-          })
+        const itemJson = await itemRes.json()
+        console.log("📨 Respuesta item comprado:", JSON.stringify(itemJson, null, 2))
+
+        if (!itemRes.ok) console.warn("⚠️ Error al crear ítem comprado:", itemJson)
+
+        const variantes = producto.variantesPorTalle || []
+        const nuevasVariantes = variantes.map((v: any) => ({
+          talle: v.talle,
+          cantidad: v.talle === item.size ? Math.max(0, v.cantidad - item.quantity) : v.cantidad,
+          precio: v.precio,
+        }))
+        const nuevoStockTotal = nuevasVariantes.reduce((sum: number, v: any) => sum + v.cantidad, 0)
+
+        const stockPayload = {
+          data: {
+            variantesPorTalle: nuevasVariantes,
+            stock: nuevoStockTotal,
+          },
         }
+
+        console.log("📤 Payload actualización stock:", JSON.stringify(stockPayload, null, 2))
+
+        const stockRes = await fetch(
+          `https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}?populate=*`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(stockPayload),
+          }
+        )
+
+        const stockJson = await stockRes.json()
+        console.log("📨 Respuesta actualización stock:", JSON.stringify(stockJson, null, 2))
+
+        if (!stockRes.ok) console.warn("⚠️ Error al actualizar stock:", stockJson)
       }
-
-      const getItemsRes = await fetch(
-        `https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados?filters[fortela_orden][id][$eq]=${ordenId}`
-      )
-      const itemsData = await getItemsRes.json()
-      const itemIds = itemsData?.data?.map((item: any) => item.id)
-
-      if (Array.isArray(itemIds) && itemIds.length > 0) {
-        await fetch(`https://vps-4937880-x.dattaweb.com/api/fortela-ordenes/${ordenId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            data: {
-              fortela_items_comprados: itemIds,
-            },
-          }),
-        })
-      }
-
-      // ✅ Descontar stock por talle
-      for (const item of cart) {
-        await discountStockByTalle(item)
-      }
-
-      setOrden({
-        id: ordenId,
-        estado: "pendiente",
-        total,
-        fecha,
-        tipo_venta: "online",
-        items,
-      })
 
       toast({
         title: "Orden creada correctamente",
@@ -170,6 +126,7 @@ export default function CartPage() {
 
       clearCart()
     } catch (error) {
+      console.error("❌ Checkout error:", error)
       toast({
         variant: "destructive",
         title: "Error al generar orden",
@@ -183,7 +140,6 @@ export default function CartPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Tu Carrito</h1>
-
       {cart.length === 0 ? (
         <div className="text-center py-16">
           <ShoppingBag className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
@@ -197,16 +153,14 @@ export default function CartPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
             <div className="space-y-4">
-              {cart.map((item) => (
+              {cart.map((item: any) => (
                 <CartItem key={`${item.documentId}-${item.size ?? ""}`} item={item} />
               ))}
             </div>
           </div>
-
           <div className="lg:col-span-1">
             <div className="border rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4">Resumen de compra</h2>
-
               <div className="space-y-3 mb-4">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
@@ -222,12 +176,10 @@ export default function CartPage() {
                   <span>${total.toFixed(2)}</span>
                 </div>
               </div>
-
               <Button className="w-full mb-3" size="lg" onClick={handleCheckout} disabled={isCheckingOut}>
                 {isCheckingOut ? "Procesando..." : "Finalizar compra"}
                 {!isCheckingOut && <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
-
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                 <p>Este es un checkout de prueba. No se realizará ningún pago real.</p>

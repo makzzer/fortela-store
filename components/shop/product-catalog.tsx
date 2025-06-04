@@ -8,7 +8,6 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import AddToCartButton from "./add-to-cart-button"
 
-
 const getProducts = async () => {
   const res = await fetch("https://vps-4937880-x.dattaweb.com/api/productos?populate=*", {
     next: { revalidate: 60 },
@@ -20,13 +19,16 @@ const getProducts = async () => {
 
   return data.data.map((item: any) => {
     const variantes = item.variantesPorTalle || []
-
     const totalStock = variantes.reduce((sum: number, v: any) => sum + (v.cantidad || 0), 0)
-    const lowestPrice = variantes.reduce((min: number, v: any) => v.precio < min ? v.precio : min, variantes[0]?.precio || 0)
+    const lowestPrice = variantes.reduce(
+      (min: number, v: any) => (v.precio < min ? v.precio : min),
+      variantes[0]?.precio || 0
+    )
     const talles = variantes.map((v: any) => v.talle)
 
     return {
       documentId: item.documentId,
+      id: item.id,
       name: item.nombre,
       description: item.descripcion,
       price: lowestPrice,
@@ -43,6 +45,7 @@ export default function ProductCatalog() {
   const searchParams = useSearchParams()
   const [filteredProducts, setFilteredProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const fetchAndFilter = async () => {
@@ -72,73 +75,93 @@ export default function ProductCatalog() {
   }
 
   if (filteredProducts.length === 0) {
-    return <p className="text-center py-8 text-muted-foreground">No se encontraron productos que coincidan con tu búsqueda.</p>
+    return (
+      <p className="text-center py-8 text-muted-foreground">
+        No se encontraron productos que coincidan con tu búsqueda.
+      </p>
+    )
   }
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      {filteredProducts.map((product: any) => (
-        <Card key={product.documentId} className="overflow-hidden">
-          <div className="aspect-square relative">
-            <Image
-              src={product.image || "/placeholder.svg"}
-              alt={product.name}
-              fill
-              className="object-cover transition-transform hover:scale-105"
-            />
-          </div>
-          <CardContent className="p-4">
-            <h3 className="font-medium text-lg mb-1">{product.name}</h3>
-            <p className="text-muted-foreground text-sm mb-2">{product.description}</p>
+      {filteredProducts.map((product: any) => {
+        const selectedSize = selectedSizes[product.documentId] || ""
 
-            <SizeSelector variantes={product.variantesPorTalle} />
-          </CardContent>
-          <CardFooter className="p-4 pt-0 flex flex-col gap-2">
-            <AddToCartButton product={product} />
-            <Link href={`/shop/${product.documentId}`} className="w-full">
-              <Button variant="outline" className="w-full">Ver producto</Button>
-            </Link>
-          </CardFooter>
-        </Card>
-      ))}
-    </div>
-  )
-}
+        return (
+          <Card key={product.documentId} className="overflow-hidden">
+            <div className="aspect-square relative">
+              <Image
+                src={product.image || "/placeholder.svg"}
+                alt={product.name}
+                fill
+                className="object-cover transition-transform hover:scale-105"
+              />
+            </div>
+            <CardContent className="p-4">
+              <h3 className="font-medium text-lg mb-1">{product.name}</h3>
+              <p className="text-muted-foreground text-sm mb-2">{product.description}</p>
 
-function SizeSelector({ variantes }: { variantes: any[] }) {
-  const [selected, setSelected] = useState<string>("")
-  const [stock, setStock] = useState<number | null>(null)
-  const [price, setPrice] = useState<number | null>(null)
+              <div className="flex flex-wrap gap-2 mb-2">
+                {product.variantesPorTalle.map((v: any) => (
+                  <button
+                    key={v.talle}
+                    onClick={() =>
+                      setSelectedSizes((prev) => ({
+                        ...prev,
+                        [product.documentId]: v.talle,
+                      }))
+                    }
+                    className={`px-3 py-1 border rounded-full text-sm transition-colors ${
+                      selectedSize === v.talle
+                        ? "bg-black text-white"
+                        : "bg-white text-black hover:bg-gray-100"
+                    }`}
+                  >
+                    {v.talle}
+                  </button>
+                ))}
+              </div>
 
-  useEffect(() => {
-    const match = variantes.find((v) => v.talle === selected)
-    setStock(match?.cantidad ?? null)
-    setPrice(match?.precio ?? null)
-  }, [selected, variantes])
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {variantes.map((v) => (
-          <button
-            key={v.talle}
-            onClick={() => setSelected(v.talle)}
-            className={`px-3 py-1 border rounded-full text-sm transition-colors ${
-              selected === v.talle ? "bg-black text-white" : "bg-white text-black hover:bg-gray-100"
-            }`}
-          >
-            {v.talle}
-          </button>
-        ))}
-      </div>
-
-      {selected && (
-        <div className="text-sm bg-gray-50 rounded-md p-2 border mt-2">
-          <p className="text-gray-700">Talle <span className="font-semibold">{selected}</span></p>
-          <p className="text-gray-700">Stock disponible: <span className="font-medium">{stock}</span></p>
-          <p className="text-gray-700">Precio: <span className="font-medium">${price?.toFixed(2)}</span></p>
-        </div>
-      )}
+              {selectedSize && (
+                <div className="text-sm bg-gray-50 rounded-md p-2 border">
+                  {(() => {
+                    const match = product.variantesPorTalle.find(
+                      (v: any) => v.talle === selectedSize
+                    )
+                    return (
+                      <>
+                        <p className="text-gray-700">
+                          Stock disponible: <span className="font-medium">{match?.cantidad}</span>
+                        </p>
+                        <p className="text-gray-700">
+                          Precio:{" "}
+                          <span className="font-medium">
+                            ${match?.precio?.toFixed(2) ?? product.price}
+                          </span>
+                        </p>
+                      </>
+                    )
+                  })()}
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="p-4 pt-0 flex flex-col gap-2">
+              <AddToCartButton
+                product={{
+                  ...product,
+                  size: selectedSize,
+                }}
+                showSelect={false} // ⛔ oculta el selector extra
+              />
+              <Link href={`/shop/${product.documentId}`} className="w-full">
+                <Button variant="outline" className="w-full">
+                  Ver producto
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+        )
+      })}
     </div>
   )
 }
