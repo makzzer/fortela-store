@@ -8,6 +8,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import AddToCartButton from "./add-to-cart-button"
 
+
 const getProducts = async () => {
   const res = await fetch("https://vps-4937880-x.dattaweb.com/api/productos?populate=*", {
     next: { revalidate: 60 },

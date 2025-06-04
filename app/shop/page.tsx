@@ -4,7 +4,10 @@ import ProductFilters from "@/components/shop/product-filters"
 import SearchBar from "@/components/shop/search-bar"
 import { Skeleton } from "@/components/ui/skeleton"
 
-export default function ShopPage({ searchParams }: { searchParams: Record<string, string> }) {
+
+export default function ShopPage() {
+
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Tienda de Uniformes</h1>
@@ -18,7 +21,7 @@ export default function ShopPage({ searchParams }: { searchParams: Record<string
 
         <div className="flex-1">
           <Suspense fallback={<ProductCatalogSkeleton />}>
-            <ProductCatalog searchParams={searchParams} />
+            <ProductCatalog />
           </Suspense>
         </div>
       </div>
