@@ -8,7 +8,7 @@ export const OrdenesProvider = ({ children }: { children: React.ReactNode }) => 
   const [ordenes, setOrdenes] = useState([]);
 
   useEffect(() => {
-    axios.get("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes")
+    axios.get("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes?populate=*")
       .then(res => setOrdenes(res.data.data))
       .catch(err => console.error("Error cargando órdenes", err));
   }, []);

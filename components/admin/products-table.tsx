@@ -41,6 +41,10 @@ export default function ProductsTable({ filtro }: Props) {
     return min === max ? `$${min.toFixed(2)}` : `$${min.toFixed(2)} - $${max.toFixed(2)}`;
   };
 
+  const hasLowStock = (product: any) => {
+    return product.variantesPorTalle?.some((v: any) => v.cantidad <= 10);
+  };
+
   return (
     <div className="w-full">
       {/* DESKTOP */}
@@ -56,82 +60,86 @@ export default function ProductsTable({ filtro }: Props) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {productosFiltrados.map((product) => (
-              <TableRow key={product.id}>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-md overflow-hidden bg-muted relative">
-                      <Image
-                        src={"/placeholder.svg"}
-                        alt={product.nombre}
-                        fill
-                        className="object-cover"
-                      />
+            {productosFiltrados.map((product) => {
+              const lowStock = hasLowStock(product);
+              return (
+                <TableRow
+                  key={product.id}
+                  className={lowStock ? "bg-red-50 border-y border-red-200" : ""}
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-md overflow-hidden bg-muted relative">
+                        <Image
+                          src={"/placeholder.svg"}
+                          alt={product.nombre}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <span className="font-medium whitespace-nowrap">{product.nombre}</span>
                     </div>
-                    <span className="font-medium whitespace-nowrap">{product.nombre}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="capitalize">{product.genero}</TableCell>
-                <TableCell>{getPriceRange(product)}</TableCell>
-                <TableCell>
-                  <div className="flex flex-col items-start gap-1">
-                    <Badge variant={getStockTotal(product) > 10 ? "outline" : "destructive"}>
-                      {getStockTotal(product)} en stock
-                    </Badge>
-                    {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
-                      <StockDetailPopover variantes={product.variantesPorTalle} />
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Acciones</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem asChild>
-                        <Link href={`/admin/products/${product.documentId}`}>
-                          <Edit className="mr-2 h-4 w-4" /> Editar
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/admin/stock?id=${product.documentId}`}>
-                          <QrCode className="mr-2 h-4 w-4" /> Stock
-                        </Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell className="capitalize">{product.genero}</TableCell>
+                  <TableCell>{getPriceRange(product)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-1">
+                      <Badge variant={getStockTotal(product) > 10 ? "outline" : "destructive"}>
+                        {getStockTotal(product)} en stock
+                      </Badge>
+                      {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
+                        <StockDetailPopover variantes={product.variantesPorTalle} />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">Acciones</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                          <Link href={`/admin/products/${product.documentId}`}>
+                            <Edit className="mr-2 h-4 w-4" /> Editar
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/admin/stock?id=${product.documentId}`}>
+                            <QrCode className="mr-2 h-4 w-4" /> Stock
+                          </Link>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
 
       {/* MOBILE */}
-      {/* MOBILE */}
       <div className="grid gap-4 sm:hidden mt-4 px-4">
         {productosFiltrados.map((product) => {
-          const totalStock = getStockTotal(product)
-          const lowStock = product.variantesPorTalle?.some((v: any) => v.cantidad <= 10)
+          const totalStock = getStockTotal(product);
+          const lowStock = hasLowStock(product);
 
           return (
             <div
               key={product.id}
-              className={`border rounded-xl p-4 shadow-sm transition ${lowStock ? "bg-red-50 border-red-200" : "bg-white"
-                }`}
+              className={`border rounded-xl p-4 shadow-sm transition ${lowStock ? "bg-red-50 border-red-200" : "bg-white"}`}
             >
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-base">{product.nombre}</h3>
                 <Badge
                   className={`text-xs px-2 py-1 font-medium rounded-full ${totalStock <= 10
-                      ? "bg-red-100 text-red-700"
-                      : "bg-gray-100 text-gray-800"
+                    ? "bg-red-100 text-red-700"
+                    : "bg-gray-100 text-gray-800"
                     }`}
                 >
                   {totalStock} en stock
@@ -150,8 +158,7 @@ export default function ProductsTable({ filtro }: Props) {
                   {product.variantesPorTalle.map((v: any) => (
                     <div
                       key={v.talle}
-                      className={`flex justify-between ${v.cantidad <= 10 ? "text-red-700 font-semibold" : ""
-                        }`}
+                      className={`flex justify-between ${v.cantidad <= 10 ? "text-red-700 font-semibold" : ""}`}
                     >
                       <span className="capitalize">{v.talle}</span>
                       <span>
@@ -177,10 +184,9 @@ export default function ProductsTable({ filtro }: Props) {
                 </Link>
               </div>
             </div>
-          )
+          );
         })}
       </div>
-
     </div>
   );
 }

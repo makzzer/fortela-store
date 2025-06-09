@@ -19,8 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Eye, MoreHorizontal, Truck, XCircle } from "lucide-react";
-import OrderDetailsModal from "./OrderDetailsModal";
 import { useEffect, useState } from "react";
+import OrderDetailsModal from "./OrderDetailsModal";
 
 interface Order {
   id: number;
@@ -28,6 +28,7 @@ interface Order {
   date: string;
   status: string;
   tipo_venta: string;
+  documentId: string;
 }
 
 interface Props {
@@ -39,12 +40,13 @@ export default function OrdersTable({ filtro }: Props) {
 
   useEffect(() => {
     const fetchOrders = async () => {
-      const res = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
+      const res = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes?populate=fortela_cliente", {
         cache: "no-store",
       });
       const data = await res.json();
       const formatted = data.data.map((order: any) => ({
         id: order.id,
+        documentId: order.documentId,
         total: order.total,
         date: new Date(order.fecha).toLocaleDateString(),
         status: order.estado,
@@ -62,7 +64,6 @@ export default function OrdersTable({ filtro }: Props) {
 
   return (
     <div className="w-full">
-      {/* ✅ VISTA DESKTOP */}
       <div className="hidden sm:block overflow-x-auto">
         <Table className="w-full">
           <TableHeader>
@@ -111,11 +112,7 @@ export default function OrdersTable({ filtro }: Props) {
                       <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
-                        <OrderDetailsModal order={order}>
-                          <div className="flex items-center">
-                            <Eye className="mr-2 h-4 w-4" /> Ver Detalles
-                          </div>
-                        </OrderDetailsModal>
+                      <OrderDetailsModal documentId={order.documentId} />
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <Truck className="mr-2 h-4 w-4" /> Cambiar Estado
@@ -132,7 +129,6 @@ export default function OrdersTable({ filtro }: Props) {
         </Table>
       </div>
 
-      {/* ✅ VISTA MOBILE MODERNA CON ÍCONOS */}
       <div className="grid gap-4 sm:hidden mt-4 px-4">
         {ordenesFiltradas.map((order) => (
           <div
@@ -163,22 +159,13 @@ export default function OrdersTable({ filtro }: Props) {
             </div>
 
             <div className="flex gap-3 mt-1">
-              <OrderDetailsModal order={order}>
-                <button
-                  className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition"
-                  title="Ver detalles"
-                >
-                  <Eye className="w-5 h-5 text-gray-700" />
-                </button>
-              </OrderDetailsModal>
-
+            <OrderDetailsModal documentId={order.documentId} />
               <button
                 className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition"
                 title="Cambiar estado"
               >
                 <Truck className="w-5 h-5 text-gray-700" />
               </button>
-
               <button
                 className="p-2 rounded-full bg-red-100 hover:bg-red-200 transition"
                 title="Cancelar orden"

@@ -1,53 +1,116 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { type ReactNode } from "react"
+import { useEffect, useState } from "react";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Eye } from "lucide-react";
 
-interface Order {
-  id: number
-  total: number
-  date: string
-  status: string
-  tipo_venta: string
+interface Item {
+  id: number;
+  cantidad: number;
+  talle: string;
+  producto: {
+    nombre: string;
+    descripcion: string;
+    precio: number;
+  };
 }
 
 interface Props {
-  order: Order
-  children: ReactNode
+  documentId: string;
 }
 
-export default function OrderDetailsModal({ order, children }: Props) {
-  const [open, setOpen] = useState(false)
+export default function OrderDetailsModal({ documentId }: Props) {
+  const [items, setItems] = useState<Item[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+
+    setLoading(true);
+
+    const url = "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados?populate=*";
+    console.log("🔎 FETCH URL:", url);
+
+    fetch(url)
+      .then(async (res) => {
+        const json = await res.json();
+        console.log("📥 RESPONSE:", json);
+
+        if (!res.ok || !json.data) {
+          throw new Error(json.error?.message || "Error al obtener productos");
+        }
+
+        const filtered = json.data.filter(
+          (item: any) => item.fortela_orden?.documentId === documentId
+        );
+
+        const mapped = filtered.map((item: any) => ({
+          id: item.id,
+          cantidad: item.cantidad,
+          talle: item.talle,
+          producto: {
+            nombre: item.fortela_producto?.nombre || "",
+            descripcion: item.fortela_producto?.descripcion || "",
+            precio: item.fortela_producto?.precio || 0,
+          },
+        }));
+
+        setItems(mapped);
+      })
+      .catch((err) => {
+        console.error("❌ ERROR FETCHING ITEMS:", err);
+        setItems([]);
+      })
+      .finally(() => setLoading(false));
+  }, [open, documentId]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {children}
+        <Button variant="outline" size="sm">
+          <Eye className="w-4 h-4 mr-2" /> Ver Detalles
+        </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Order Details - ORD-{order.id}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="flex justify-between">
-            <span className="font-semibold">Date:</span>
-            <span>{order.date}</span>
+      <DialogContent className="max-w-2xl w-full">
+        <h2 className="text-xl font-bold mb-4">Productos de la Orden</h2>
+
+        {loading ? (
+          <p className="text-muted-foreground text-sm">Cargando productos...</p>
+        ) : items.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No se encontraron productos para esta orden.</p>
+        ) : (
+          <div className="border rounded-lg overflow-hidden mb-4">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="text-left p-2">Producto</th>
+                  <th className="text-left p-2">Descripción</th>
+                  <th className="text-center p-2">Talle</th>
+                  <th className="text-center p-2">Cantidad</th>
+                  <th className="text-right p-2">Precio</th>
+                  <th className="text-right p-2">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id} className="border-b">
+                    <td className="p-2">{item.producto.nombre}</td>
+                    <td className="p-2">{item.producto.descripcion}</td>
+                    <td className="p-2 text-center">{item.talle}</td>
+                    <td className="p-2 text-center">{item.cantidad}</td>
+                    <td className="p-2 text-right">${item.producto.precio.toFixed(2)}</td>
+                    <td className="p-2 text-right">
+                      ${(item.producto.precio * item.cantidad).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Total:</span>
-            <span>${order.total.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Status:</span>
-            <span>{order.status}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Type:</span>
-            <span>{order.tipo_venta}</span>
-          </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
