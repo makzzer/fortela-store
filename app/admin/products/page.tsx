@@ -14,11 +14,14 @@ export default function ProductsPage() {
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold">Productos</h1>
-        <Button asChild>
-          <Link href="/admin/products/new">
-            <Plus className="mr-2 h-4 w-4" /> Agregar Producto
-          </Link>
-        </Button>
+        <Link
+          href="/admin/products/new"
+          className="inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 text-sm font-medium shadow hover:bg-neutral-800 transition"
+        >
+          <Plus className="h-4 w-4" />
+          Agregar
+        </Link>
+
       </div>
 
       <div className="mb-6 flex items-center gap-4">
