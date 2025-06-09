@@ -35,7 +35,10 @@ export default function StockDetailPopover({ variantes }: Props) {
           </thead>
           <tbody>
             {variantes.map((v) => (
-              <tr key={v.talle} className="border-b">
+              <tr
+                key={v.talle}
+                className={`border-b ${v.cantidad <= 10 ? "bg-red-100 text-red-800 font-semibold" : ""}`}
+              >
                 <td className="py-1">{v.talle}</td>
                 <td className="py-1">${v.precio.toLocaleString()}</td>
                 <td className="py-1">{v.cantidad}</td>

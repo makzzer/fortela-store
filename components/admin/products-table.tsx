@@ -114,47 +114,73 @@ export default function ProductsTable({ filtro }: Props) {
       </div>
 
       {/* MOBILE */}
+      {/* MOBILE */}
       <div className="grid gap-4 sm:hidden mt-4 px-4">
-        {productosFiltrados.map((product) => (
-          <div key={product.id} className="border rounded-xl p-4 shadow-sm bg-white">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-base">{product.nombre}</h3>
-              <Badge variant={getStockTotal(product) > 10 ? "outline" : "destructive"}>
-                {getStockTotal(product)} en stock
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground capitalize">
-              Género: {product.genero}
-            </p>
-            <p className="text-sm text-muted-foreground mb-1">
-              Precio: {getPriceRange(product)}
-            </p>
-            {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
-              <div className="text-sm text-muted-foreground mb-2">
-                {product.variantesPorTalle.map((v) => (
-                  <div key={v.talle}>
-                    {v.talle}: ${v.precio} - {v.cantidad} unidades
-                  </div>
-                ))}
+        {productosFiltrados.map((product) => {
+          const totalStock = getStockTotal(product)
+          const lowStock = product.variantesPorTalle?.some((v: any) => v.cantidad <= 10)
+
+          return (
+            <div
+              key={product.id}
+              className={`border rounded-xl p-4 shadow-sm transition ${lowStock ? "bg-red-50 border-red-200" : "bg-white"
+                }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-base">{product.nombre}</h3>
+                <Badge
+                  className={`text-xs px-2 py-1 font-medium rounded-full ${totalStock <= 10
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-800"
+                    }`}
+                >
+                  {totalStock} en stock
+                </Badge>
               </div>
-            )}
-            <div className="flex gap-2">
-              <Link
-                href={`/admin/products/${product.documentId}`}
-                className="flex items-center gap-1 rounded-md bg-gray-400/60 px-3 py-1 text-sm hover:bg-gray-200 transition"
-              >
-                <Edit className="h-4 w-4" /> Editar
-              </Link>
-              <Link
-                href={`/admin/stock?id=${product.documentId}`}
-                className="flex items-center gap-1 rounded-md bg-gray-400/60 px-3 py-1 text-sm hover:bg-gray-200 transition"
-              >
-                <QrCode className="h-4 w-4" /> Stock
-              </Link>
+
+              <p className="text-sm text-muted-foreground capitalize">
+                Género: {product.genero}
+              </p>
+              <p className="text-sm text-muted-foreground mb-1">
+                Precio: {getPriceRange(product)}
+              </p>
+
+              {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
+                <div className="text-sm text-muted-foreground mb-3 space-y-1">
+                  {product.variantesPorTalle.map((v: any) => (
+                    <div
+                      key={v.talle}
+                      className={`flex justify-between ${v.cantidad <= 10 ? "text-red-700 font-semibold" : ""
+                        }`}
+                    >
+                      <span className="capitalize">{v.talle}</span>
+                      <span>
+                        ${v.precio} - {v.cantidad} u.
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2 mt-2">
+                <Link
+                  href={`/admin/products/${product.documentId}`}
+                  className="flex items-center gap-1 rounded-md bg-gray-800 text-white px-3 py-1 text-sm hover:bg-gray-700 transition"
+                >
+                  <Edit className="h-4 w-4" /> Editar
+                </Link>
+                <Link
+                  href={`/admin/stock?id=${product.documentId}`}
+                  className="flex items-center gap-1 rounded-md bg-gray-200 px-3 py-1 text-sm hover:bg-gray-300 transition"
+                >
+                  <QrCode className="h-4 w-4" /> Stock
+                </Link>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
+
     </div>
   );
 }

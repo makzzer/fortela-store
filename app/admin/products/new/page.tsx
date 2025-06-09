@@ -1,93 +1,125 @@
-'use client'
+"use client"
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import Swal from 'sweetalert2'
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import Swal from "sweetalert2"
+import { Trash2 } from "lucide-react"
 
 const generosUI = [
-  { label: 'Niña', value: 'niña' },
-  { label: 'Niño', value: 'niño' },
-  { label: 'Unisex', value: 'unisex' },
+  { label: "Niña", value: "niña" },
+  { label: "Niño", value: "niño" },
+  { label: "Unisex", value: "unisex" },
 ]
 
-const tallesDisponibles = ['XS', 'S', 'M', 'L']
+interface VarianteTalle {
+  talle: string
+  cantidad: number
+  precio: number
+}
 
 export default function AddProductPage() {
   const router = useRouter()
   const [resultado, setResultado] = useState<string | null>(null)
+  const [nuevoTalle, setNuevoTalle] = useState("")
   const [form, setForm] = useState({
-    nombre: '',
-    descripcion: '',
-    precio: '',
-    stock: '',
-    genero: '',
-    talles: [] as string[],
-    qr_code: '',
+    nombre: "",
+    descripcion: "",
+    genero: "",
+    //qr_code: "",
     imagen: null as File | null,
+    variantesPorTalle: [] as VarianteTalle[],
   })
 
+  const agregarTalle = () => {
+    const talle = nuevoTalle.trim().toUpperCase()
+    if (!talle) return
+    if (form.variantesPorTalle.some((v) => v.talle === talle)) return
+
+    setForm((prev) => ({
+      ...prev,
+      variantesPorTalle: [...prev.variantesPorTalle, { talle, cantidad: 0, precio: 0 }],
+    }))
+    setNuevoTalle("")
+  }
+
+  const eliminarTalle = (talle: string) => {
+    setForm((prev) => ({
+      ...prev,
+      variantesPorTalle: prev.variantesPorTalle.filter((v) => v.talle !== talle),
+    }))
+  }
+
+  const handleVarianteChange = (talle: string, field: "cantidad" | "precio", value: number) => {
+    setForm((prev) => ({
+      ...prev,
+      variantesPorTalle: prev.variantesPorTalle.map((v) =>
+        v.talle === talle ? { ...v, [field]: value } : v
+      ),
+    }))
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
+    const { name, value } = e.target
+
+    const formattedValue =
+      name === "nombre"
+        ? value.charAt(0).toUpperCase() + value.slice(1)
+        : value
+
+    setForm({ ...form, [name]: formattedValue })
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, imagen: e.target.files?.[0] ?? null })
   }
 
-  const toggleTalle = (talle: string) => {
-    setForm((prev) => ({
-      ...prev,
-      talles: prev.talles.includes(talle)
-        ? prev.talles.filter((t) => t !== talle)
-        : [...prev.talles, talle],
-    }))
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    const variantesActivas = form.variantesPorTalle.filter((v) => v.cantidad > 0 && v.precio > 0)
+    const totalStock = variantesActivas.reduce((sum, v) => sum + v.cantidad, 0)
+    const minPrecio = Math.min(...variantesActivas.map((v) => v.precio))
 
     const payload = {
       nombre: form.nombre.trim(),
       descripcion: form.descripcion.trim(),
-      precio: form.precio !== '' ? Number(form.precio) : 0,
-      stock: form.stock !== '' ? Number(form.stock) : 0,
-      genero: form.genero.trim() || 'unisex',
-      talles: form.talles,
-      qr_code: form.qr_code.trim(),
+      genero: form.genero || "unisex",
+      //qr_code: form.qr_code.trim(),
+      precio: minPrecio || 0,
+      stock: totalStock || 0,
+      variantesPorTalle: variantesActivas,
     }
 
     try {
-      const res = await fetch('https://vps-4937880-x.dattaweb.com/api/productos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const res = await fetch("https://vps-4937880-x.dattaweb.com/api/productos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: payload }),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        console.error('❌ Error en la respuesta:', data)
+        console.error("❌ Error en la respuesta:", data)
         setResultado(`Error: ${JSON.stringify(data.error)}`)
         throw new Error(`Error HTTP ${res.status}`)
       }
 
       await Swal.fire({
-        icon: 'success',
-        title: 'Producto creado',
-        text: 'El producto fue guardado correctamente',
-        confirmButtonText: 'OK',
+        icon: "success",
+        title: "Producto creado",
+        text: "El producto fue guardado correctamente",
+        confirmButtonText: "OK",
       })
 
-      router.push('/admin/products')
+      router.push("/admin/products")
     } catch (error) {
       console.error(error)
-      Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo guardar el producto' })
+      Swal.fire({ icon: "error", title: "Error", text: "No se pudo guardar el producto" })
     }
   }
 
@@ -102,18 +134,12 @@ export default function AddProductPage() {
 
         <div className="grid gap-2">
           <Label htmlFor="descripcion">Descripción</Label>
-          <Textarea id="descripcion" name="descripcion" value={form.descripcion} onChange={handleChange} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="precio">Precio</Label>
-            <Input id="precio" name="precio" type="number" value={form.precio} onChange={handleChange} required />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="stock">Stock</Label>
-            <Input id="stock" name="stock" type="number" value={form.stock} onChange={handleChange} required />
-          </div>
+          <Textarea
+            id="descripcion"
+            name="descripcion"
+            value={form.descripcion}
+            onChange={handleChange}
+          />
         </div>
 
         <div className="grid gap-2">
@@ -128,43 +154,99 @@ export default function AddProductPage() {
           >
             <option value="">Seleccionar</option>
             {generosUI.map((g) => (
-              <option key={g.value} value={g.value}>{g.label}</option>
+              <option key={g.value} value={g.value}>
+                {g.label}
+              </option>
             ))}
           </select>
         </div>
 
         <div className="grid gap-2">
-          <Label>Talles</Label>
-          <div className="flex flex-wrap gap-2">
-            {tallesDisponibles.map((talle) => (
-              <button
-                type="button"
-                key={talle}
-                onClick={() => toggleTalle(talle)}
-                className={`px-3 py-1 rounded-full border text-sm ${
-                  form.talles.includes(talle)
-                    ? 'bg-black text-white'
-                    : 'bg-white text-gray-700'
-                }`}
+          <Label>Variantes por talle</Label>
+
+          <div className="flex gap-2 items-center">
+            <Input
+              type="text"
+              placeholder="Ej: S, M, 2, 4, etc."
+              value={nuevoTalle}
+              onChange={(e) => setNuevoTalle(e.target.value.toUpperCase())}
+              className="flex-1"
+            />
+            <Button type="button" onClick={agregarTalle}>
+              Agregar
+            </Button>
+          </div>
+
+          <div className="grid gap-3 mt-2">
+            {form.variantesPorTalle.map((v) => (
+              <div
+                key={v.talle}
+                className="grid grid-cols-6 items-center gap-3 border rounded-lg p-3 bg-gray-50"
               >
-                {talle}
-              </button>
+                <span className="col-span-1 font-medium text-sm text-gray-700">{v.talle}</span>
+
+                <div className="col-span-2">
+                  <Label className="text-xs text-gray-500">Stock</Label>
+                  <Input
+                    type="number"
+                    value={String(v.cantidad)}
+                    min={0}
+                    onChange={(e) =>
+                      handleVarianteChange(v.talle, "cantidad", Number(e.target.value || 0))
+                    }
+                  />
+                </div>
+
+                <div className="col-span-2 relative">
+                  <Label className="text-xs text-gray-500">Precio</Label>
+                  <span className="absolute left-3 top-[36px] text-sm text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    value={String(v.precio)}
+                    min={0}
+                    onChange={(e) =>
+                      handleVarianteChange(v.talle, "precio", Number(e.target.value || 0))
+                    }
+                    className="pl-7"
+                  />
+                </div>
+
+                <div className="flex items-end justify-end">
+                  <Button
+                    type="button"
+                    onClick={() => eliminarTalle(v.talle)}
+                    variant="ghost"
+                    size="icon"
+                    className="text-red-600 hover:bg-red-100"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
             ))}
           </div>
         </div>
 
+        {/*
         <div className="grid gap-2">
           <Label htmlFor="qr_code">Código QR (opcional)</Label>
           <Input id="qr_code" name="qr_code" value={form.qr_code} onChange={handleChange} />
         </div>
+                  */}
 
         <div className="grid gap-2">
           <Label htmlFor="imagen">Imagen (por ahora no se sube)</Label>
           <Input id="imagen" type="file" accept="image/*" onChange={handleFileChange} />
-          {form.imagen && <p className="text-sm text-muted-foreground">Imagen seleccionada: {form.imagen.name}</p>}
+          {form.imagen && (
+            <p className="text-sm text-muted-foreground">
+              Imagen seleccionada: {form.imagen.name}
+            </p>
+          )}
         </div>
 
-        <Button type="submit" className="w-full">Crear producto</Button>
+        <Button type="submit" className="w-full">
+          Crear producto
+        </Button>
       </form>
       {resultado && <p className="text-sm text-muted-foreground">{resultado}</p>}
     </div>
