@@ -3,25 +3,17 @@
 import Link from "next/link";
 import Image from "next/image";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Edit, MoreHorizontal, QrCode } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useProductos } from "@/app/context/ProductosContext";
+import StockDetailPopover from "@/components/admin/stock-detail-popover";
 
 interface Props {
   filtro: string;
@@ -34,9 +26,24 @@ export default function ProductsTable({ filtro }: Props) {
     p.nombre.toLowerCase().includes(filtro.toLowerCase())
   );
 
+  const getStockTotal = (product: any) => {
+    return Array.isArray(product.variantesPorTalle)
+      ? product.variantesPorTalle.reduce((acc: number, v: any) => acc + (v.cantidad || 0), 0)
+      : product.stock || 0;
+  };
+
+  const getPriceRange = (product: any) => {
+    const precios = Array.isArray(product.variantesPorTalle)
+      ? product.variantesPorTalle.map((v: any) => v.precio)
+      : [product.precio];
+    const min = Math.min(...precios);
+    const max = Math.max(...precios);
+    return min === max ? `$${min.toFixed(2)}` : `$${min.toFixed(2)} - $${max.toFixed(2)}`;
+  };
+
   return (
     <div className="w-full">
-      {/* ✅ VISTA DESKTOP */}
+      {/* DESKTOP */}
       <div className="hidden sm:block overflow-x-auto">
         <Table className="w-full">
           <TableHeader>
@@ -65,11 +72,16 @@ export default function ProductsTable({ filtro }: Props) {
                   </div>
                 </TableCell>
                 <TableCell className="capitalize">{product.genero}</TableCell>
-                <TableCell>${product.precio.toFixed(2)}</TableCell>
+                <TableCell>{getPriceRange(product)}</TableCell>
                 <TableCell>
-                  <Badge variant={product.stock > 10 ? "outline" : "destructive"}>
-                    {product.stock} en stock
-                  </Badge>
+                  <div className="flex flex-col items-start gap-1">
+                    <Badge variant={getStockTotal(product) > 10 ? "outline" : "destructive"}>
+                      {getStockTotal(product)} en stock
+                    </Badge>
+                    {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
+                      <StockDetailPopover variantes={product.variantesPorTalle} />
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
@@ -101,22 +113,31 @@ export default function ProductsTable({ filtro }: Props) {
         </Table>
       </div>
 
-      {/* ✅ VISTA MOBILE (cards) */}
+      {/* MOBILE */}
       <div className="grid gap-4 sm:hidden mt-4 px-4">
         {productosFiltrados.map((product) => (
           <div key={product.id} className="border rounded-xl p-4 shadow-sm bg-white">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-semibold text-base">{product.nombre}</h3>
-              <Badge variant={product.stock > 10 ? "outline" : "destructive"}>
-                {product.stock} en stock
+              <Badge variant={getStockTotal(product) > 10 ? "outline" : "destructive"}>
+                {getStockTotal(product)} en stock
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground capitalize">
               Género: {product.genero}
             </p>
-            <p className="text-sm text-muted-foreground mb-3">
-              Precio: ${product.precio.toFixed(2)}
+            <p className="text-sm text-muted-foreground mb-1">
+              Precio: {getPriceRange(product)}
             </p>
+            {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
+              <div className="text-sm text-muted-foreground mb-2">
+                {product.variantesPorTalle.map((v) => (
+                  <div key={v.talle}>
+                    {v.talle}: ${v.precio} - {v.cantidad} unidades
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2">
               <Link
                 href={`/admin/products/${product.documentId}`}

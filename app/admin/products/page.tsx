@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import ProductsTable from "@/components/admin/products-table";
 import { Plus, Search } from "lucide-react";
 
