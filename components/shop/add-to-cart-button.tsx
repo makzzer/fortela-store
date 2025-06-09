@@ -14,17 +14,23 @@ interface Product {
   image: string
   size?: string
   sizes?: string[]
+  variantesPorTalle?: { talle: string; precio: number; cantidad: number }[]
 }
 
 interface AddToCartButtonProps {
   product: Product
-  showSelect?: boolean // ya no se usa porque se pasa false desde el catálogo
+  showSelect?: boolean
 }
 
 export default function AddToCartButton({ product }: AddToCartButtonProps) {
   const { addToCart } = useCart()
   const { toast } = useToast()
   const [isAdding, setIsAdding] = useState(false)
+
+  const getPriceBySize = (talle: string): number => {
+    const variante = product.variantesPorTalle?.find((v) => v.talle === talle)
+    return variante?.precio ?? product.price
+  }
 
   const handleAddToCart = () => {
     if (!product.size) {
@@ -36,6 +42,8 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
       return
     }
 
+    const price = getPriceBySize(product.size)
+
     setIsAdding(true)
 
     setTimeout(() => {
@@ -43,7 +51,7 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
         id: String(product.id),
         documentId: product.documentId,
         name: product.name,
-        price: product.price,
+        price: price,
         image: product.image,
         quantity: 1,
         size: product.size,

@@ -8,11 +8,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { useCart } from "./cart-provider"
-import { ShoppingBag, X } from "lucide-react"
+import { ShoppingBag, X, Minus, Plus } from "lucide-react"
 
 export default function CartDropdown() {
   const [open, setOpen] = useState(false)
-  const { cart, removeFromCart } = useCart()
+  const { cart, removeFromCart, updateQuantity } = useCart()
 
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0)
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
@@ -52,7 +52,12 @@ export default function CartDropdown() {
                 {cart.map((item) => (
                   <div key={`${item.documentId}-${item.size ?? "default"}`} className="flex items-start gap-3">
                     <div className="w-16 h-16 rounded-md overflow-hidden bg-muted relative">
-                      <Image src={item.image || "/placeholder.svg"} alt={item.name} fill className="object-cover" />
+                      <Image
+                        src={item.image || "/placeholder.svg"}
+                        alt={item.name}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
                     <div className="flex-1 space-y-1">
                       <div className="flex justify-between">
@@ -64,18 +69,48 @@ export default function CartDropdown() {
                           onClick={() => removeFromCart(item.documentId, item.size)}
                         >
                           <X className="h-4 w-4" />
-                          <span className="sr-only">Remove</span>
+                          <span className="sr-only">Quitar</span>
                         </Button>
                       </div>
-                      {item.size && <div className="text-sm text-muted-foreground">Size: {item.size}</div>}
-                      <div className="flex justify-between text-sm">
-                        <div>Qty: {item.quantity}</div>
-                        <div className="font-medium">${(item.price * item.quantity).toFixed(2)}</div>
+                      {item.size && (
+                        <div className="text-sm text-muted-foreground">
+                          Talle: <span className="font-semibold text-foreground">{item.size}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-6 w-6"
+                            onClick={() =>
+                              updateQuantity(item.documentId, Math.max(1, item.quantity - 1), item.size)
+                            }
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <span className="px-2">{item.quantity}</span>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-6 w-6"
+                            onClick={() =>
+                              updateQuantity(item.documentId, item.quantity + 1, item.size)
+                            }
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="text-right">
+                          <div>Precio: ${item.price.toFixed(2)}</div>
+                          <div className="font-medium">
+                            Total: ${(item.price * item.quantity).toFixed(2)}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 ))}
-
               </div>
             </ScrollArea>
 
@@ -86,16 +121,18 @@ export default function CartDropdown() {
                   <span className="font-medium">Subtotal</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
-                <div className="text-xs text-muted-foreground">Shipping and taxes calculated at checkout</div>
+                <div className="text-xs text-muted-foreground">
+                  El envío e impuestos se calculan al finalizar la compra
+                </div>
               </div>
               <SheetFooter className="flex flex-col gap-2 sm:flex-row">
                 <SheetTrigger asChild>
                   <Button variant="outline" className="w-full" asChild>
-                    <Link href="/shop">Continue Shopping</Link>
+                    <Link href="/shop">Seguir comprando</Link>
                   </Button>
                 </SheetTrigger>
                 <Button className="w-full" asChild onClick={() => setOpen(false)}>
-                  <Link href="/cart">Checkout</Link>
+                  <Link href="/cart">Finalizar compra</Link>
                 </Button>
               </SheetFooter>
             </div>
