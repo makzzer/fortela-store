@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { useCart } from "./cart-provider"
 import { ShoppingBag, X, Minus, Plus } from "lucide-react"
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 
 export default function CartDropdown() {
   const [open, setOpen] = useState(false)
@@ -32,7 +33,9 @@ export default function CartDropdown() {
       </SheetTrigger>
       <SheetContent className="flex w-full flex-col sm:max-w-lg">
         <SheetHeader className="px-1">
-          <SheetTitle>Carrito de compras ({totalItems})</SheetTitle>
+          <SheetTitle>
+            <VisuallyHidden>Carrito de compras</VisuallyHidden>
+          </SheetTitle>
         </SheetHeader>
 
         {cart.length === 0 ? (
