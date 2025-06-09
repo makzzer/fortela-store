@@ -93,11 +93,7 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
         <p className="text-muted-foreground mb-4">{product.description}</p>
         <p className="text-2xl font-semibold mb-2">${product.price.toFixed(2)}</p>
 
-        <p className={`text-sm mb-2 ${product.stock <= 5 ? "text-red-500 font-medium" : "text-green-600"}`}>
-          {product.stock <= 5
-            ? `¡Quedan solo ${product.stock} unidad${product.stock === 1 ? "" : "es"}!`
-            : `Quedan ${product.stock} unidades en total`}
-        </p>
+   
 
         {/* Selector de talle */}
         {product.variantesPorTalle?.length > 0 && (
@@ -125,7 +121,8 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
           </p>
         )}
 
-        <AddToCartButton product={product} />
+        <AddToCartButton product={{ ...product, size: selectedSize || undefined }} />
+
 
         <div className="mt-6">
           <h2 className="font-semibold mb-2 text-center">Código QR del producto</h2>

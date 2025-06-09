@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Swal from "sweetalert2"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
@@ -52,10 +53,11 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
     const stockDisponible = getStockDisponible(product.size)
 
     if (quantity > stockDisponible) {
-      toast({
-        variant: "destructive",
+      Swal.fire({
+        icon: "warning",
         title: "Stock insuficiente",
-        description: `Solo hay ${stockDisponible} unidades disponibles del talle ${product.size}.`,
+        text: `Solo hay ${stockDisponible} unidad${stockDisponible === 1 ? "" : "es"} disponibles del talle ${product.size}.`,
+        confirmButtonText: "Entendido",
       })
       return
     }
@@ -94,7 +96,10 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
           min={1}
           max={getStockDisponible(product.size || "")}
           value={quantity}
-          onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+          onChange={(e) => {
+            const value = parseInt(e.target.value) || 1
+            setQuantity(Math.min(value, getStockDisponible(product.size || "")))
+          }}
           className="w-20 h-8 text-sm"
         />
       </div>
