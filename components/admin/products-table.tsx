@@ -71,7 +71,7 @@ export default function ProductsTable({ filtro }: Props) {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-md overflow-hidden bg-muted relative">
                         <Image
-                          src={"/placeholder.svg"}
+                          src={"/nike.jpeg"}
                           alt={product.nombre}
                           fill
                           className="object-cover"

@@ -19,7 +19,7 @@ const getRelatedProducts = async (id: string): Promise<RelatedProduct[]> => {
       documentId: `related-${id}-${i}`, // clave única garantizada
       name: `School Uniform Item ${i + 1}`,
       price: Math.floor(Math.random() * 50) + 10,
-      image: "/bana.webp",
+      image: "/nike.jpeg",
     }))
 }
 

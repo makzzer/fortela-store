@@ -33,7 +33,7 @@ const getProducts = async () => {
       description: item.descripcion,
       price: lowestPrice,
       stock: totalStock,
-      image: "/bana.webp",
+      image: "/nike.jpeg",
       category: item.genero || "unisex",
       sizes: talles,
       variantesPorTalle: variantes,

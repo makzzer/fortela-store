@@ -44,7 +44,7 @@ export default function ProductDetails({ id }: ProductDetailsProps) {
           price: productData.precio,
           stock: totalStock,
           variantesPorTalle: variantes,
-          image: "/bana.webp", // reemplazá si usás media real
+          image: "/nike.jpeg", // reemplazá si usás media real
         })
       } catch (error) {
         console.error("Error fetching product details", error)
