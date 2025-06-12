@@ -11,7 +11,7 @@ const getStockAlerts = async () => {
     .fill(0)
     .map((_, i) => ({
       id: `${i + 1}`,
-      name: `School Uniform Item ${i + 1}`,
+      name: `Uniforme Escolar ${i + 1}`,
       stock: Math.floor(Math.random() * 5) + 1,
       image: "/nike.jpeg",
     }))

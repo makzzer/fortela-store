@@ -52,7 +52,7 @@ export default function CartPage() {
       const ordenPayload = {
         data: {
           total,
-          estado: "pendiente",
+          estado: "procesando",
           tipo_venta: "online",
           fecha,
           fortela_cliente: 2,
