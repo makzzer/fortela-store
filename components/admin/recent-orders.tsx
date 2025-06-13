@@ -79,7 +79,7 @@ export default function RecentOrders() {
       <TableBody>
         {orders.map((order) => (
           <TableRow key={order.id}>
-            <TableCell className="font-medium">{order.id}</TableCell>
+            <TableCell className="font-medium">{order.documentId}</TableCell>
             <TableCell>{order.date}</TableCell>
             <TableCell>${order.total.toFixed(2)}</TableCell>
             <TableCell>
