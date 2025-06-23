@@ -20,7 +20,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Eye, MoreHorizontal, Truck, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+
+//MODALES
 import OrderDetailsModal from "./OrderDetailsModal";
+import TicketCambioModal from "./orders/TicketCambioModal";
+
 
 interface Order {
   id: number;
@@ -91,10 +95,10 @@ export default function OrdersTable({ filtro }: Props) {
                       order.status === "completado"
                         ? "default"
                         : order.status === "pendiente"
-                        ? "secondary"
-                        : order.status === "cancelado"
-                        ? "destructive"
-                        : "outline"
+                          ? "secondary"
+                          : order.status === "cancelado"
+                            ? "destructive"
+                            : "outline"
                     }
                   >
                     {order.status}
@@ -108,12 +112,23 @@ export default function OrdersTable({ filtro }: Props) {
                         <span className="sr-only">Acciones</span>
                       </Button>
                     </DropdownMenuTrigger>
+
                     <DropdownMenuContent align="end">
+
                       <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                       <DropdownMenuSeparator />
+
+                      {/**ver detalles modal */}
                       <DropdownMenuItem asChild>
-                      <OrderDetailsModal documentId={order.documentId} />
+                        <OrderDetailsModal documentId={order.documentId} />
                       </DropdownMenuItem>
+
+                      {/**ver tickets de cambio modal */}
+                      <DropdownMenuItem asChild>
+                        <TicketCambioModal documentId={order.documentId} fecha={order.date} />
+                      </DropdownMenuItem>
+
+
                       <DropdownMenuItem>
                         <Truck className="mr-2 h-4 w-4" /> Cambiar Estado
                       </DropdownMenuItem>
@@ -142,10 +157,10 @@ export default function OrdersTable({ filtro }: Props) {
                   order.status === "completado"
                     ? "default"
                     : order.status === "pendiente"
-                    ? "secondary"
-                    : order.status === "cancelado"
-                    ? "destructive"
-                    : "outline"
+                      ? "secondary"
+                      : order.status === "cancelado"
+                        ? "destructive"
+                        : "outline"
                 }
               >
                 {order.status}
@@ -159,7 +174,7 @@ export default function OrdersTable({ filtro }: Props) {
             </div>
 
             <div className="flex gap-3 mt-1">
-            <OrderDetailsModal documentId={order.documentId} />
+              <OrderDetailsModal documentId={order.documentId} />
               <button
                 className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition"
                 title="Cambiar estado"

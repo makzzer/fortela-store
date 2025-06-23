@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Eye } from "lucide-react";
 
@@ -69,19 +74,25 @@ export default function OrderDetailsModal({ documentId }: Props) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+                <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start font-normal gap-2"
+        >
           <Eye className="w-4 h-4 mr-2" /> Ver Detalles
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl w-full">
-        <h2 className="text-xl font-bold mb-4">Productos de la Orden</h2>
+        <DialogTitle className="text-xl font-bold">Productos de la Orden</DialogTitle>
 
         {loading ? (
-          <p className="text-muted-foreground text-sm">Cargando productos...</p>
+          <p className="text-muted-foreground text-sm mt-2">Cargando productos...</p>
         ) : items.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No se encontraron productos para esta orden.</p>
+          <p className="text-muted-foreground text-sm mt-2">
+            No se encontraron productos para esta orden.
+          </p>
         ) : (
-          <div className="border rounded-lg overflow-hidden mb-4">
+          <div className="border rounded-lg overflow-hidden mt-4">
             <table className="w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
@@ -100,7 +111,9 @@ export default function OrderDetailsModal({ documentId }: Props) {
                     <td className="p-2">{item.producto.descripcion}</td>
                     <td className="p-2 text-center">{item.talle}</td>
                     <td className="p-2 text-center">{item.cantidad}</td>
-                    <td className="p-2 text-right">${item.producto.precio.toFixed(2)}</td>
+                    <td className="p-2 text-right">
+                      ${item.producto.precio.toFixed(2)}
+                    </td>
                     <td className="p-2 text-right">
                       ${(item.producto.precio * item.cantidad).toFixed(2)}
                     </td>
