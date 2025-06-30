@@ -25,9 +25,11 @@ const mainNavItems = [
 const adminNavItems = [
   { name: "Dashboard", href: "/admin" },
   { name: "Productos", href: "/admin/products" },
+  { name: "Stock", href: "/admin/stock" },
   { name: "Órdenes", href: "/admin/orders" },
-  { name: "Clientes", href: "/admin/customers" },
+ //{ name: "Clientes", href: "/admin/customers" },
   { name: "POS", href: "/pos" },
+
 ]
 
 export default function Header() {
