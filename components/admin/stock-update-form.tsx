@@ -8,132 +8,178 @@ import Swal from "sweetalert2"
 
 interface StockUpdateFormProps {
   productId: string // documentId
+  talle: string
 }
 
-export default function StockUpdateForm({ productId }: StockUpdateFormProps) {
+interface Variante {
+  talle: string
+  cantidad: number
+  precio: number
+}
+
+export default function StockUpdateForm({ productId, talle }: StockUpdateFormProps) {
   const [operation, setOperation] = useState<"add" | "remove">("add")
   const [quantity, setQuantity] = useState<number | "">("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [producto, setProducto] = useState<{
-    id: number
-    documentId: string
-    nombre: string
-    stock: number
-  } | null>(null)
+  const [producto, setProducto] = useState<any>(null)
+  const [internalId, setInternalId] = useState<number | null>(null)
+  const [debugPayload, setDebugPayload] = useState<any>(null)
+  const [putErrorMessage, setPutErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchProduct = async () => {
+    const fetchProducto = async () => {
       try {
         const res = await fetch(
-          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${productId}`
+          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${productId}&populate=*`
         )
-        const data = await res.json()
+        const responseText = await res.text()
+        let parsedJson: any = null
+        try {
+          parsedJson = JSON.parse(responseText)
+        } catch (e) { }
+
+        if (!res.ok) {
+          throw new Error(
+            `Error ${res.status} ${res.statusText}\n\n` +
+            (parsedJson ? JSON.stringify(parsedJson, null, 2) : responseText)
+          )
+        }
+
+        const data = parsedJson
         const productoData = data?.data?.[0]
+        if (!productoData) throw new Error("Producto no encontrado")
 
-        if (!productoData)
-          throw new Error("Producto no encontrado")
+        setProducto(productoData)
+        setInternalId(productoData.id)
+        setPutErrorMessage(null) // limpiamos errores anteriores
+      } catch (err: any) {
+        console.error("ERROR FETCH:", err)
+        setPutErrorMessage(err.message)
 
-        setProducto({
-          id: productoData.id,
-          documentId: productoData.documentId,
-          nombre: productoData.nombre || "Sin nombre",
-          stock: productoData.stock || 0,
-        })
-      } catch (error) {
-        console.error(error)
         Swal.fire({
+          title: "Error al cargar producto",
           icon: "error",
-          title: "Error",
-          text: "No se pudo cargar el producto escaneado.",
+          html: `<pre style="text-align:left;overflow-x:auto;font-size:11px">${err.message}</pre>`,
+          customClass: { popup: "text-left" },
+          width: 600,
         })
       }
     }
 
-    if (productId) fetchProduct()
-  }, [productId])
+    if (productId && talle) fetchProducto()
+  }, [productId, talle])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!producto || quantity === "") return
+    if (!producto || quantity === "" || internalId === null) return
 
+    const variantes: Variante[] = producto.variantesPorTalle || []
+    const index = variantes.findIndex((v) => v.talle === talle)
+
+    if (index === -1) {
+      Swal.fire("Error", "Talle no encontrado en el producto", "error")
+      return
+    }
+
+    const stockActual = variantes[index].cantidad
+
+    if (operation === "remove" && quantity > stockActual) {
+      Swal.fire("Cantidad inválida", `Solo hay ${stockActual} unidades en stock`, "warning")
+      return
+    }
+
+    const nuevaCantidad =
+      operation === "add"
+        ? stockActual + quantity
+        : Math.max(0, stockActual - quantity)
+
+    const nuevasVariantes = variantes.map((v, i) => {
+      const nueva = { ...v, cantidad: i === index ? nuevaCantidad : v.cantidad }
+      delete (nueva as any).id
+      return nueva
+    })
+
+
+    const payload = {
+      data: {
+        variantesPorTalle: nuevasVariantes,
+        stock: nuevasVariantes.reduce((acc, v) => acc + v.cantidad, 0),
+        precio: Math.min(...nuevasVariantes.map((v) => v.precio)),
+      },
+    }
+
+    setDebugPayload(payload)
     setIsSubmitting(true)
 
     try {
-      // Obtener el producto actualizado antes de hacer el PUT
-      const getRes = await fetch(
-        `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${producto.documentId}`
-      )
-      const getData = await getRes.json()
-      const fetchedProduct = getData?.data?.[0]
-
-      if (!fetchedProduct) throw new Error("Producto no encontrado al actualizar stock")
-
-      const stockActual = fetchedProduct.stock
-      const idNumerico = fetchedProduct.documentId
-
-      const newStock =
-        operation === "add"
-          ? stockActual + quantity
-          : Math.max(0, stockActual - quantity)
-
       const putRes = await fetch(
-        `https://vps-4937880-x.dattaweb.com/api/productos/${idNumerico}`,
+        `https://vps-4937880-x.dattaweb.com/api/productos/${productId}`,
         {
           method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            data: {
-              stock: newStock,
-            },
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
         }
       )
 
-      if (!putRes.ok) throw new Error("Error actualizando el stock")
+      const responseText = await putRes.text()
+      if (!putRes.ok) {
+        setPutErrorMessage(`PUT falló - status ${putRes.status}\n\n${responseText}`)
 
-      await Swal.fire({
-        icon: "success",
-        title: "Stock actualizado",
-        text: `Nuevo stock para ${fetchedProduct.nombre}: ${newStock}`,
-        confirmButtonText: "OK",
-      })
+        throw new Error(
+          `PUT falló - status ${putRes.status}\n\n${responseText}`
+        )
+      }
 
-      setProducto({
-        ...producto,
-        stock: newStock,
-      })
+      setProducto((prev: any) => ({
+        ...prev,
+        variantesPorTalle: nuevasVariantes,
+      }))
       setQuantity("")
-    } catch (error) {
-      console.error(error)
+      setPutErrorMessage(null)
+      await Swal.fire("Actualizado", `Nuevo stock para talle ${talle}: ${nuevaCantidad}`, "success")
+    } catch (err: any) {
+      console.error("PUT ERROR:", err)
+      setPutErrorMessage(err.message)
+
       Swal.fire({
+        title: "Error al actualizar stock",
         icon: "error",
-        title: "Error",
-        text: "No se pudo actualizar el stock.",
+        html: `<pre style="text-align:left;overflow-x:auto;font-size:11px">${err.message}</pre>`,
+        customClass: { popup: "text-left" },
+        width: 600,
       })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  if (!producto)
-    return <p className="text-muted-foreground text-sm">Cargando producto...</p>
+  if (!producto) return <p className="text-sm text-muted-foreground">Cargando producto...</p>
+
+  const variantes: Variante[] = producto.variantesPorTalle || []
+  const variante = variantes.find((v) => v.talle === talle)
+  if (!variante) return <p className="text-sm text-red-500">Talle no encontrado.</p>
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="text-sm">
-        <p>
-          <span className="font-semibold">Producto:</span> {producto.nombre}
-        </p>
-        <p>
-          <span className="font-semibold">Stock actual:</span> {producto.stock}
-        </p>
+        <p><strong>Producto:</strong> {producto.nombre}</p>
+        <p><strong>Talle:</strong> {talle}</p>
+        <p><strong>Stock actual:</strong> {variante.cantidad}</p>
       </div>
 
-      <div className="space-y-2">
-        <Label>Elegí operación</Label>
-        <div className="flex gap-2">
+      <div className="bg-muted p-3 rounded-md text-sm">
+        <p className="font-medium mb-2">Stock por talle:</p>
+        <ul className="list-disc ml-4 space-y-1">
+          {variantes.map((v) => (
+            <li key={v.talle} className={v.talle === talle ? "font-semibold text-primary" : ""}>
+              {v.talle}: {v.cantidad} unidades
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex gap-2 items-center">
           <Button
             type="button"
             variant={operation === "add" ? "default" : "outline"}
@@ -142,6 +188,16 @@ export default function StockUpdateForm({ productId }: StockUpdateFormProps) {
           >
             + Sumar stock
           </Button>
+
+          <div className="text-muted-foreground text-sm w-32 text-center">
+            {quantity !== "" && (
+              <>
+                {operation === "add" ? "Agregar" : "Quitar"}{" "}
+                <strong>{quantity}</strong> unidad{quantity !== 1 ? "es" : ""}
+              </>
+            )}
+          </div>
+
           <Button
             type="button"
             variant={operation === "remove" ? "default" : "outline"}
@@ -151,20 +207,33 @@ export default function StockUpdateForm({ productId }: StockUpdateFormProps) {
             – Restar stock
           </Button>
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="quantity">Cantidad</Label>
+          <Input
+            id="quantity"
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) =>
+              setQuantity(e.target.value === "" ? "" : parseInt(e.target.value))
+            }
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="quantity">Cantidad</Label>
-        <Input
-          id="quantity"
-          type="number"
-          min="1"
-          value={quantity}
-          onChange={(e) =>
-            setQuantity(e.target.value === "" ? "" : parseInt(e.target.value))
-          }
-        />
-      </div>
+      {debugPayload && (
+        <pre className="bg-gray-100 text-xs p-3 rounded border overflow-auto">
+          {JSON.stringify(debugPayload, null, 2)}
+        </pre>
+      )}
+
+      {putErrorMessage && (
+        <div className="bg-red-100 border border-red-300 text-red-800 p-3 text-xs rounded-md whitespace-pre-wrap overflow-auto">
+          <strong>Detalle del error al guardar:</strong>
+          <pre>{putErrorMessage}</pre>
+        </div>
+      )}
 
       <Button type="submit" className="w-full" disabled={isSubmitting || quantity === ""}>
         {isSubmitting ? "Actualizando..." : "Actualizar stock"}
