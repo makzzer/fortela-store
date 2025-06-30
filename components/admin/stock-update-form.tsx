@@ -121,7 +121,7 @@ export default function StockUpdateForm({ productId, talle }: StockUpdateFormPro
         }
       )
 
-      const responseText = await putRes.text()
+      {/* const responseText = await putRes.text()
       if (!putRes.ok) {
         setPutErrorMessage(`PUT falló - status ${putRes.status}\n\n${responseText}`)
 
@@ -129,6 +129,7 @@ export default function StockUpdateForm({ productId, talle }: StockUpdateFormPro
           `PUT falló - status ${putRes.status}\n\n${responseText}`
         )
       }
+    */}
 
       setProducto((prev: any) => ({
         ...prev,
@@ -144,7 +145,6 @@ export default function StockUpdateForm({ productId, talle }: StockUpdateFormPro
       Swal.fire({
         title: "Error al actualizar stock",
         icon: "error",
-        html: `<pre style="text-align:left;overflow-x:auto;font-size:11px">${err.message}</pre>`,
         customClass: { popup: "text-left" },
         width: 600,
       })
@@ -222,11 +222,14 @@ export default function StockUpdateForm({ productId, talle }: StockUpdateFormPro
         </div>
       </div>
 
+      {/*
       {debugPayload && (
         <pre className="bg-gray-100 text-xs p-3 rounded border overflow-auto">
           {JSON.stringify(debugPayload, null, 2)}
         </pre>
       )}
+
+      */}
 
       {putErrorMessage && (
         <div className="bg-red-100 border border-red-300 text-red-800 p-3 text-xs rounded-md whitespace-pre-wrap overflow-auto">
