@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import CambioTicketPreview from "./CambioTicketPreview";
-import { FileText } from "lucide-react"; // 👈 Usa un ícono consistente si querés
 
 interface Item {
   id: number;
@@ -65,10 +64,12 @@ export default function TicketCambioModal({ documentId, fecha }: Props) {
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start font-normal gap-2 flex items-center"
+          className="w-full justify-start font-normal gap-2"
         >
-          <FileText className="w-4 h-4" /> {/* o reemplazá por <span>🧾</span> */}
-          Ver Ticket de cambio
+            <div className="flex just">
+            <div>🧾</div>
+            <div>Ver Tickets de cambio</div>
+            </div>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-3xl w-full">

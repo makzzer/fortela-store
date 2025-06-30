@@ -1,3 +1,5 @@
+'use client'
+
 import type React from "react"
 import { Suspense } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -7,8 +9,11 @@ import RecentOrders from "@/components/admin/recent-orders"
 import SalesChart from "@/components/admin/sales-chart"
 import StockAlerts from "@/components/admin/stock-alerts"
 import { ShoppingBag, Users, Package, DollarSign } from "lucide-react"
+import { useDashboardData } from "@/components/admin/dashboard/useDashboardData"
 
 export default function AdminDashboard() {
+  const { totalSales, isLoading } = useDashboardData()
+
   return (
     <div>
       <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
@@ -16,8 +21,8 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <DashboardCard
           title="Total Sales"
-          value="$12,345.67"
-          description="+12% from last month"
+          value={isLoading ? "Cargando..." : `$${totalSales.toFixed(2)}`}
+          description="En construcción..."
           icon={<DollarSign className="h-5 w-5" />}
         />
         <DashboardCard title="Orders" value="156" description="24 pending" icon={<ShoppingBag className="h-5 w-5" />} />
@@ -54,9 +59,8 @@ export default function AdminDashboard() {
                 <CardTitle>Stock Alerts</CardTitle>
               </CardHeader>
               <CardContent>
-                <Suspense fallback={<StockAlertsSkeleton />}>
-                  <StockAlerts />
-                </Suspense>
+                {/* ✅ Eliminado Suspense */}
+                <StockAlerts />
               </CardContent>
             </Card>
           </div>
