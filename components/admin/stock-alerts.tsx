@@ -20,7 +20,7 @@ export default function StockAlerts() {
     const fetchAlerts = async () => {
       await new Promise((resolve) => setTimeout(resolve, 500)) // Simular delay
 
-      const data = Array(5)
+      const data = Array(7)
         .fill(0)
         .map((_, i) => ({
           id: `${i + 1}`,
@@ -36,17 +36,19 @@ export default function StockAlerts() {
     fetchAlerts()
   }, [])
 
-  if (loading) return <p className="text-sm text-muted-foreground">Cargando alertas...</p>
+  if (loading) {
+    return <p className="text-sm text-muted-foreground">Cargando alertas...</p>
+  }
 
   return (
-    <div className="space-y-4">
-      {alerts.map((item) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      {alerts.slice(0,6).map((item) => (
         <Link
           key={item.id}
           href={`/admin/products/${item.id}`}
-          className="flex items-center gap-3 p-2 rounded-md hover:bg-muted"
+          className="flex items-center gap-4 p-3 border rounded-md shadow-sm hover:bg-muted transition"
         >
-          <div className="w-10 h-10 rounded-md overflow-hidden bg-muted relative">
+          <div className="w-12 h-12 rounded-md overflow-hidden bg-muted relative">
             <Image
               src={item.image || "/placeholder.svg"}
               alt={item.name}
@@ -54,13 +56,15 @@ export default function StockAlerts() {
               className="object-cover"
             />
           </div>
+
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate">{item.name}</h4>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">
-                {item.stock} en stock
-              </Badge>
-            </div>
+            <h4 className="text-sm font-medium truncate">{item.name}</h4>
+            <Badge
+              variant="outline"
+              className="text-xs h-5 px-2 bg-red-100 text-red-800 border-red-200 mt-1"
+            >
+              {item.stock} en stock
+            </Badge>
           </div>
         </Link>
       ))}
