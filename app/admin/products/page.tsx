@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ProductsTable from "@/components/admin/products-table";
 import { Plus, Search } from "lucide-react";
+import BulkUploadProducts from "./BulkUploadProducts";
 
 export default function ProductsPage() {
   const [busqueda, setBusqueda] = useState("");
@@ -14,14 +15,21 @@ export default function ProductsPage() {
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-bold">Productos</h1>
-        <Link
-          href="/admin/products/new"
-          className="inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 text-sm font-medium shadow hover:bg-neutral-800 transition"
-        >
-          <Plus className="h-4 w-4" />
-          Agregar
-        </Link>
 
+        {/* Acciones del header */}
+        <div className="flex items-center gap-2">
+          {/* Botón para importar Excel */}
+          <BulkUploadProducts />
+
+          {/* Botón Agregar */}
+          <Link
+            href="/admin/products/new"
+            className="inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 text-sm font-medium shadow hover:bg-neutral-800 transition"
+          >
+            <Plus className="h-4 w-4" />
+            Agregar
+          </Link>
+        </div>
       </div>
 
       <div className="mb-6 flex items-center gap-4">

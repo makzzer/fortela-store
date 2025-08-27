@@ -15,11 +15,11 @@ interface Producto {
   documentId: string
   nombre: string
   descripcion?: string
-  precio: number // puede ser precio base o promedio, depende cómo lo uses
+  precio: number
   stock: number
   genero: string
   qr_code?: string
-  colegio?: string
+  colegio?: string[]            // ahora array
   nivel_educativo?: string[]
   variantesPorTalle?: VariantePorTalle[]
 }
@@ -30,47 +30,50 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
   const [productos, setProductos] = useState<Producto[]>([])
 
   useEffect(() => {
-    axios
-      .get("https://vps-4937880-x.dattaweb.com/api/productos?populate=*")
-      .then((res) => {
-        const processed = res.data.data.map((item: any) => {
-          const variantes = item.variantesPorTalle || []
+    const fetchAll = async () => {
+      const base = "https://vps-4937880-x.dattaweb.com/api/productos"
+      const pageSize = 200
+      let page = 1
+      let all: any[] = []
 
-          const totalStock = variantes.reduce(
-            (sum: number, v: any) => sum + (v.cantidad || 0),
-            0
-          )
+      while (true) {
+        const { data } = await axios.get(
+          `${base}?populate=*&pagination[page]=${page}&pagination[pageSize]=${pageSize}`
+        )
+        all = all.concat(data.data)
+        const { pageCount } = data.meta.pagination
+        if (page >= pageCount) break
+        page++
+      }
 
-          return {
-            id: item.id,
-            documentId: item.documentId,
-            nombre: item.nombre,
-            descripcion: item.descripcion,
-            precio: item.precio,
-            stock: totalStock,
-            genero: item.genero,
-            qr_code: item.qr_code,
-            colegio: item.colegio,
-            nivel_educativo: item.nivel_educativo,
-            variantesPorTalle: variantes.map((v: any) => ({
-              id: v.id,
-              talle: v.talle,
-              cantidad: v.cantidad,
-              precio: v.precio,
-            })),
-          }
-        })
+      const processed = all.map((item: any) => {
+        const variantes = item.variantesPorTalle || []
+        const totalStock = variantes.reduce((sum: number, v: any) => sum + (v.cantidad || 0), 0)
 
-        setProductos(processed)
+        return {
+          id: item.id,
+          documentId: item.documentId,
+          nombre: item.nombre,
+          descripcion: item.descripcion,
+          precio: item.precio,
+          stock: totalStock,
+          genero: item.genero,
+          qr_code: item.qr_code,
+          colegio: item.colegio,                   // array de strings
+          nivel_educativo: item.nivel_educativo,
+          variantesPorTalle: variantes.map((v: any) => ({
+            id: v.id, talle: v.talle, cantidad: v.cantidad, precio: v.precio
+          })),
+        } as Producto
       })
-      .catch((err) => console.error("Error cargando productos", err))
+
+      setProductos(processed)
+    }
+
+    fetchAll().catch((err) => console.error("Error cargando productos", err))
   }, [])
 
-  return (
-    <ProductosContext.Provider value={productos}>
-      {children}
-    </ProductosContext.Provider>
-  )
+  return <ProductosContext.Provider value={productos}>{children}</ProductosContext.Provider>
 }
 
 export const useProductos = () => useContext(ProductosContext)
