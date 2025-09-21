@@ -27,6 +27,8 @@ interface POSCartItemProps {
   onDecrement: () => void
   onRemove: () => void
   onChangeSize?: (size: string) => void
+  /** NUEVO: permite ocultar el selector inline */
+  inlineSizeSelector?: boolean
 }
 
 export default function POSCartItem({
@@ -35,10 +37,17 @@ export default function POSCartItem({
   onDecrement,
   onRemove,
   onChangeSize,
+  inlineSizeSelector = true, // default true para no romper otros usos
 }: POSCartItemProps) {
+  // Mostrar selector SOLO si:
+  // - inlineSizeSelector está habilitado
+  // - existe onChangeSize
+  // - el item sigue pendiente de talle
+  // - hay variantes
   const showSizeSelector =
-    (!!onChangeSize && (item.variantes?.length ?? 0) > 0) ||
-    (!item.size && (item.variantes?.length ?? 0) > 0)
+    inlineSizeSelector &&
+    !!onChangeSize &&
+    ((item.pendingSize ?? !item.size) && (item.variantes?.length ?? 0) > 0)
 
   const varianteSeleccionada = item.size
     ? item.variantes?.find((v) => v.talle === item.size)

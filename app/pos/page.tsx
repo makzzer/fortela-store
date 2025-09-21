@@ -201,7 +201,7 @@ export default function POSPage() {
     setCartSizeSelections(prev => ({ ...prev, [talle]: Math.max(0, (prev[talle] ?? 0) - 1) }));
   };
 
-  //Aplicar selección múltiple al carrito (merge por talle)
+  // Aplicar selección múltiple al carrito (merge por talle)
   const applyCartSizeSelections = () => {
     if (!sizePickerItem || !(sizePickerItem.variantes?.length)) return;
 
@@ -215,17 +215,12 @@ export default function POSPage() {
         const qty = cartSizeSelections[v.talle] ?? 0;
         if (qty <= 0) continue;
 
-        // Si ya existe línea con mismo producto+talle, su cantidad actual:
         const existing = updated.find(i => i.qr_code === sizePickerItem.qr_code && i.size === v.talle);
         const yaAgregado = existing ? existing.quantity : 0;
         const disponible = v.cantidad ?? 0;
 
         if (qty + yaAgregado > disponible) {
-          toast({
-            variant: "destructive",
-            title: "Stock insuficiente",
-            description: `Talle ${v.talle}: pediste ${qty + yaAgregado} y hay ${disponible}.`
-          });
+          toast({ variant: "destructive", title: "Stock insuficiente", description: `Talle ${v.talle}: pediste ${qty + yaAgregado} y hay ${disponible}.` });
           continue;
         }
 
@@ -252,6 +247,11 @@ export default function POSPage() {
         }
 
         agregoAlgo = true;
+      }
+
+      // si se agregaron talles, eliminar la línea pendiente
+      if (agregoAlgo && sizePickerItem?.pendingSize) {
+        updated = updated.filter(p => p !== sizePickerItem);
       }
 
       return updated;
@@ -542,13 +542,16 @@ export default function POSPage() {
                   <h3 className="font-medium">Carrito</h3>
                   {cart.map((item, index) => (
                     <div key={`${item.id}-${item.size ?? "pendiente"}-${index}`} className="space-y-2">
+                      {/* DONDE renderizás cada item del carrito */}
                       <POSCartItem
                         item={item as any}
                         onIncrement={() => updateQuantity(item.id, item.size, 1)}
                         onDecrement={() => updateQuantity(item.id, item.size, -1)}
                         onRemove={() => removeItem(item.id, item.size)}
-                        onChangeSize={(newSize) => handleAsignarTalle(item as any, newSize)} // opcional, si querés mantener cambio individual
+                        // onChangeSize={(newSize) => handleAsignarTalle(item as any, newSize)}  // <- QUITALO si no querés cambios individuales
+                        inlineSizeSelector={false} // <- NUEVO: oculta el select inline
                       />
+
 
                       {/* Botón para abrir el selector múltiple de talles */}
                       {item.variantes?.length ? (
