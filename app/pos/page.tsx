@@ -402,7 +402,7 @@ export default function POSPage() {
           tipo_venta: "mostrador",
           fecha,
           // si tenés cliente, conectalo así:
-          fortela_cliente: { connect: [Number(2)] },
+          fortela_cliente: { connect: [Number(3)] },
         },
       };
 

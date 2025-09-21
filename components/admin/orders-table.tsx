@@ -67,9 +67,10 @@ export default function OrdersTable({ filtro }: Props) {
   );
 
   return (
-    <div className="w-full">
-      <div className="hidden sm:block overflow-x-auto">
-        <Table className="w-full">
+    <div className="w-full overflow-x-hidden">
+      {/* Desktop / Tablet */}
+      <div className="hidden sm:block">
+        <Table className="min-w-full table-auto">
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead>
@@ -83,22 +84,24 @@ export default function OrdersTable({ filtro }: Props) {
           <TableBody>
             {ordenesFiltradas.map((order) => (
               <TableRow key={order.id}>
-                <TableCell className="font-medium">ORD-{order.id}</TableCell>
-                <TableCell>{order.date}</TableCell>
-                <TableCell>${order.total.toFixed(2)}</TableCell>
-                <TableCell>
+                <TableCell className="font-medium whitespace-nowrap">ORD-{order.id}</TableCell>
+                <TableCell className="whitespace-nowrap">{order.date}</TableCell>
+                <TableCell className="whitespace-nowrap">
+                  ${order.total.toFixed(2)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Badge variant="secondary">{order.tipo_venta}</Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Badge
                     variant={
                       order.status === "completado"
                         ? "default"
                         : order.status === "pendiente"
-                          ? "secondary"
-                          : order.status === "cancelado"
-                            ? "destructive"
-                            : "outline"
+                        ? "secondary"
+                        : order.status === "cancelado"
+                        ? "destructive"
+                        : "outline"
                     }
                   >
                     {order.status}
@@ -112,23 +115,24 @@ export default function OrdersTable({ filtro }: Props) {
                         <span className="sr-only">Acciones</span>
                       </Button>
                     </DropdownMenuTrigger>
-
+  
                     <DropdownMenuContent align="end">
-
                       <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-
-                      {/**ver detalles modal */}
+  
+                      {/* Ver detalles */}
                       <DropdownMenuItem asChild>
                         <OrderDetailsModal documentId={order.documentId} />
                       </DropdownMenuItem>
-
-                      {/**ver tickets de cambio modal */}
+  
+                      {/* Ver ticket de cambio */}
                       <DropdownMenuItem asChild>
-                        <TicketCambioModal documentId={order.documentId} fecha={order.date} />
+                        <TicketCambioModal
+                          documentId={order.documentId}
+                          fecha={order.date}
+                        />
                       </DropdownMenuItem>
-
-
+  
                       <DropdownMenuItem>
                         <Truck className="mr-2 h-4 w-4" /> Cambiar Estado
                       </DropdownMenuItem>
@@ -143,7 +147,8 @@ export default function OrdersTable({ filtro }: Props) {
           </TableBody>
         </Table>
       </div>
-
+  
+      {/* Mobile (cards) */}
       <div className="grid gap-4 sm:hidden mt-4 px-4">
         {ordenesFiltradas.map((order) => (
           <div
@@ -157,24 +162,32 @@ export default function OrdersTable({ filtro }: Props) {
                   order.status === "completado"
                     ? "default"
                     : order.status === "pendiente"
-                      ? "secondary"
-                      : order.status === "cancelado"
-                        ? "destructive"
-                        : "outline"
+                    ? "secondary"
+                    : order.status === "cancelado"
+                    ? "destructive"
+                    : "outline"
                 }
               >
                 {order.status}
               </Badge>
             </div>
-
+  
             <div className="text-sm text-muted-foreground space-y-1">
               <p>Fecha: {order.date}</p>
               <p>Total: ${order.total.toFixed(2)}</p>
               <p className="capitalize">Tipo: {order.tipo_venta}</p>
             </div>
-
-            <div className="flex gap-3 mt-1">
+  
+            {/* Botones - envueltos y sin desbordar */}
+            <div className="flex gap-3 mt-1 flex-wrap">
               <OrderDetailsModal documentId={order.documentId} />
+  
+              {/* Ticket de cambio (usa su trigger interno) */}
+              <TicketCambioModal
+                documentId={order.documentId}
+                fecha={order.date}
+              />
+  
               <button
                 className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition"
                 title="Cambiar estado"
@@ -193,4 +206,5 @@ export default function OrdersTable({ filtro }: Props) {
       </div>
     </div>
   );
+  
 }

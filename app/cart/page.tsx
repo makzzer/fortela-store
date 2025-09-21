@@ -55,7 +55,7 @@ export default function CartPage() {
           estado: "procesando",
           tipo_venta: "online",
           fecha,
-          fortela_cliente: 2,
+          fortela_cliente: 3,
         },
       }
 
