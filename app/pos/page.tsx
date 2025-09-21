@@ -106,11 +106,12 @@ export default function POSPage() {
 
         const price = typeof v.precio === "number" ? v.precio : (productoActual.precio ?? 0);
 
-        // validar contra lo ya agregado
+        // buscar misma línea (mismo producto + mismo talle)
         const existing = updated.find(i => i.qr_code === productoActual.documentId && i.size === v.talle);
         const yaAgregado = existing ? existing.quantity : 0;
 
-        if (qty + yaAgregado > v.cantidad) {
+        // validar stock contra lo ya agregado
+        if (qty + yaAgregado > (v.cantidad ?? 0)) {
           toast({
             variant: "destructive",
             title: "Stock insuficiente",
@@ -136,16 +137,16 @@ export default function POSPage() {
             quantity: qty,
             stock: v.cantidad,
             totalStock: productoActual.totalStock || 0,
-            variantes: variantes.map((vx: any) => ({ talle: vx.talle, cantidad: vx.cantidad, precio: vx.precio })), // <- agregar
+            variantes: variantes.map((vx: any) => ({ talle: vx.talle, cantidad: vx.cantidad, precio: vx.precio })),
           });
-
         }
 
-        const seAgregoAlgo = agregoAlgo;
-        if (seAgregoAlgo && sizePickerItem?.pendingSize) {
-          setCart(prev => prev.filter(p => p !== sizePickerItem));
-        }
+        agregoAlgo = true;
+      }
 
+      // si agregaste algo y existía una línea “pendiente de talle”, la removemos del array ya mutado
+      if (agregoAlgo && sizePickerItem?.pendingSize) {
+        updated = updated.filter(p => p !== sizePickerItem);
       }
 
       return updated;
@@ -160,6 +161,7 @@ export default function POSPage() {
     setShowModal(false);
     setSelecciones({});
   };
+
 
   const continuarSinTalle = () => {
     if (!productoActual || !variantes?.length) return;
@@ -389,7 +391,9 @@ export default function POSPage() {
         }
       }
 
-      // 3) Crear orden
+      // dentro de handleCheckout, reemplazá desde "3) Crear orden" hasta antes del toast OK:
+
+      // 3) Crear orden (con logs)
       const fecha = new Date().toISOString();
       const ordenPayload = {
         data: {
@@ -397,9 +401,13 @@ export default function POSPage() {
           estado: "procesando",
           tipo_venta: "mostrador",
           fecha,
-          fortela_cliente: 1, // ajustar si corresponde
+          // si tenés cliente, conectalo así:
+          fortela_cliente: { connect: [Number(2)] },
         },
       };
+
+
+      console.log("📦 Orden - payload:", ordenPayload);
 
       const ordenRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
         method: "POST",
@@ -408,21 +416,36 @@ export default function POSPage() {
       });
 
       const ordenJson = await ordenRes.json();
-      if (!ordenRes.ok) throw new Error("Error al crear la orden");
+      console.log("📦 Orden - status:", ordenRes.status, "body:", ordenJson);
+
+      if (!ordenRes.ok) {
+        await Swal.fire({ icon: "error", title: "Error creando orden", html: `<pre style="text-align:left">${JSON.stringify(ordenJson, null, 2)}</pre>` });
+        throw new Error("Error al crear la orden");
+      }
       const ordenId: number = ordenJson.data.id;
 
-      // 4) Crear items + actualizar stock por talle
+      // 4) Crear items + actualizar stock por talle (refetch por ítem + ids numéricos)
       for (const item of cart) {
-        const producto = productosByDoc[item.documentId];
-        const productoId = producto.id;
+        // re-fetch del producto (como en el Shop)
+        const productoRes = await fetch(
+          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate=*`
+        );
+        const productoJson = await productoRes.json();
+        const producto = productoJson?.data?.[0];
 
-        // 4.1) Crear item de orden
+        if (!producto) {
+          throw new Error(`Producto no encontrado: ${item.documentId}`);
+        }
+
+        const productoId = Number(producto.id);
+
+        // 4.1) crear ítem con ids numéricos (sin connect)
         const itemPayload = {
           data: {
-            cantidad: item.quantity,
-            fortela_producto: productoId,
-            fortela_orden: ordenId,
-            talle: item.size,
+            cantidad: Number(item.quantity),
+            fortela_producto: productoId,     // <<--- número plano
+            fortela_orden: Number(ordenId),   // <<--- número plano
+            talle: item.size,                 // string
           },
         };
 
@@ -434,12 +457,13 @@ export default function POSPage() {
             body: JSON.stringify(itemPayload),
           }
         );
-
+        const itemJson = await itemRes.json();
         if (!itemRes.ok) {
+          console.error("🧾 Error item:", itemJson);
           throw new Error(`Error al crear item de orden para ${item.name}`);
         }
 
-        // 4.2) Actualizar stock por talle y stock total
+        // 4.2) actualizar stock por talle (mismo algoritmo que ya tenías)
         const nuevasVariantes = (producto.variantesPorTalle || []).map((v: any) => ({
           talle: v.talle,
           cantidad: v.talle === item.size ? Math.max(0, (v.cantidad ?? 0) - item.quantity) : v.cantidad,
@@ -464,18 +488,14 @@ export default function POSPage() {
             }),
           }
         );
-
+        const putJson = await putRes.json();
         if (!putRes.ok) {
+          console.error("📉 Error PUT stock:", putJson);
           throw new Error(`Error al actualizar stock de ${item.name}`);
         }
-
-        // mantener en memoria el producto actualizado para siguientes items del mismo producto
-        productosByDoc[item.documentId] = {
-          ...producto,
-          variantesPorTalle: nuevasVariantes,
-          stock: nuevoStockTotal,
-        };
       }
+
+
 
       // 5) Ok
       toast({
