@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { useProductos } from "@/app/context/ProductosContext";
 import StockDetailPopover from "@/components/admin/stock-detail-popover";
+import { buildProductQRData } from "@/app/lib/qr";
 
 interface Props {
   filtro: string;
@@ -55,8 +56,7 @@ export default function ProductsTable({ filtro }: Props) {
   };
 
   const openQR = (p: any) => {
-    const random = Math.random().toString(36).slice(2, 10);
-    const value = `FORTELA:${p.documentId}:${random}`;
+    const value = buildProductQRData(p.documentId); // ← SOLO documentId
     setQrFor({ id: p.documentId, value, nombre: p.nombre });
   };
 
