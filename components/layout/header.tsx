@@ -17,17 +17,19 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
 
-const mainNavItems = [
-  { name: "Home", href: "/" },
-  { name: "Shop", href: "/shop" },
-]
+//const mainNavItems = [
+//{ name: "Home", href: "/" },
+//{ name: "Shop", href: "/shop" },
+//]
+
+
 
 const adminNavItems = [
   { name: "Dashboard", href: "/admin" },
   { name: "Productos", href: "/admin/products" },
   { name: "Stock", href: "/admin/stock" },
   { name: "Órdenes", href: "/admin/orders" },
- //{ name: "Clientes", href: "/admin/customers" },
+  //{ name: "Clientes", href: "/admin/customers" },
   { name: "POS", href: "/pos" },
 
 ]
@@ -48,6 +50,8 @@ export default function Header() {
           <span className="font-bold text-xl">Fortela</span>
         </Link>
 
+        {/**oculto nav del shop y demas , activar cuando haya shop */}
+        {/*
         <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
           {mainNavItems.map((item) => (
             <Link
@@ -61,16 +65,18 @@ export default function Header() {
               {item.name}
             </Link>
           ))}
-
-          {!isAdminPage && user && (
-            <Link href="/admin" className="text-foreground/60 transition-colors hover:text-foreground/80">
-              Admin
-            </Link>
-          )}
-        </nav>
-
+   
+        {!isAdminPage && user && (
+          <Link href="/admin" className="text-foreground/60 transition-colors hover:text-foreground/80">
+            Admin
+          </Link>
+        )}
+      </nav>
+*/}
         <div className="flex items-center gap-3">
-          {!isAdminPage && <CartDropdown />}
+          {/*{!isAdminPage && <CartDropdown />}*/}
+          {!isAdminPage}
+
 
           {!user ? (
             <Link href="/login">
@@ -95,35 +101,27 @@ export default function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {/**Comentando el navbard desplegable , activar cuando haya shop */}
 
-          <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Abrir menú</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left">
-              <Link href="/" className="flex items-center mb-6" onClick={() => setIsMenuOpen(false)}>
-                <span className="font-bold text-xl">Fortela</span>
-              </Link>
-              <div className="flex flex-col space-y-4">
-                {mainNavItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "text-foreground/60 transition-colors hover:text-foreground",
-                      pathname === item.href && "text-foreground",
-                    )}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    {item.name}
-                  </Link>
-                ))}
-                <div className="h-px bg-border my-2" />
-                {user &&
-                  adminNavItems.map((item) => (
+
+
+          {/* ⬇️ Mostrar el menú expandible SOLO si hay usuario */}
+          {user && (
+            <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Abrir menú</span>
+                </Button>
+              </SheetTrigger>
+
+              <SheetContent side="left">
+                <Link href="/" className="flex items-center mb-6" onClick={() => setIsMenuOpen(false)}>
+                  <span className="font-bold text-xl">Fortela</span>
+                </Link>
+                <div className="flex flex-col space-y-4">
+                  <div className="h-px bg-border my-2" />
+                  {adminNavItems.map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}
@@ -133,11 +131,13 @@ export default function Header() {
                       {item.name}
                     </Link>
                   ))}
-              </div>
-            </SheetContent>
-          </Sheet>
+                </div>
+              </SheetContent>
+            </Sheet>
+          )}
+
         </div>
       </div>
-    </header>
+    </header >
   )
 }
