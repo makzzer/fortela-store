@@ -69,25 +69,73 @@ export default function ProductsTable({ filtro }: Props) {
             <DialogTitle>QR del producto</DialogTitle>
             <DialogDescription>{qrFor?.nombre}</DialogDescription>
           </DialogHeader>
-          {qrFor && (
-            <div className="flex flex-col items-center gap-3">
-              <img
-                alt="QR"
-                className="w-56 h-56"
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrFor.value)}`}
-              />
-              <code className="text-xs bg-muted px-2 py-1 rounded">{qrFor.value}</code>
-              <Button
-                onClick={() => navigator.clipboard.writeText(qrFor.value)}
-                className="mt-1"
-                variant="secondary"
-              >
-                Copiar código
-              </Button>
-            </div>
-          )}
+
+          {qrFor && (() => {
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+              qrFor.value
+            )}`;
+
+            const handlePrint = () => {
+              const w = window.open("", "_blank");
+              if (!w) return;
+              w.document.write(`
+          <!doctype html>
+          <html>
+            <head><meta charset="utf-8"><title>Imprimir QR</title>
+              <style>
+                html,body{margin:0;padding:0}
+                .wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;}
+                img{width:220px;height:220px}
+              </style>
+            </head>
+            <body>
+              <div class="wrap"><img id="qr" src="${qrUrl}" alt="QR" /></div>
+              <script>
+                const img = document.getElementById('qr');
+                img.addEventListener('load', () => { window.print(); window.close(); });
+              </script>
+            </body>
+          </html>
+        `);
+              w.document.close();
+              w.focus();
+            };
+
+            const handleDownload = async () => {
+              try {
+                const res = await fetch(qrUrl, { mode: "cors" });
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${(qrFor.nombre || "qr").toString().replace(/[^\w\-]+/g, "_")}.png`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+              } catch {
+                // fallback: abrir en nueva pestaña si el download se bloquea por CORS
+                window.open(qrUrl, "_blank");
+              }
+            };
+
+            return (
+              <div className="flex flex-col items-center gap-3">
+                <img alt="QR" className="w-56 h-56" src={qrUrl} />
+                <code className="text-xs bg-muted px-2 py-1 rounded">{qrFor.value}</code>
+
+                <div className="flex gap-2 pt-1">
+                  <Button onClick={handlePrint}>Imprimir</Button>
+                  <Button variant="secondary" onClick={handleDownload}>
+                    Descargar
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
+
 
       {/* DESKTOP */}
       <TooltipProvider delayDuration={150}>
