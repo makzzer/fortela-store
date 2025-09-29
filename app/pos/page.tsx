@@ -434,6 +434,8 @@ export default function POSPage() {
         throw new Error("Error al crear la orden");
       }
       const ordenId: number = ordenJson.data.id;
+      const ordenDocId: string = ordenJson.data.documentId;
+
 
       // 4) Crear items + actualizar stock por talle
       for (const item of cart) {
@@ -518,6 +520,32 @@ export default function POSPage() {
         }
       }
 
+
+
+      // ----- GUARDAMOS DATOS PARA EL TICKET DEL POS -----
+      const itemsForTicket = cart.map((i) => ({
+        descripcion: i.name,
+        talle: i.size!,                       // ya validaste que no haya pendientes
+        cantidad: Number(i.quantity),
+        precio: Number(i.price),              // precio por talle que venías usando
+        importe: Number(i.price) * Number(i.quantity),
+      }));
+
+      // Guardamos en sessionStorage para leerlos en /pos/venta-completada
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("posTicketItems", JSON.stringify(itemsForTicket));
+        sessionStorage.setItem(
+          "posTicketMeta",
+          JSON.stringify({
+            ordenId: ordenDocId || String(ordenId),  // usamos documentId
+            total,
+          })
+        );
+      }
+
+
+
+
       // 4.3) ✅ NUEVO FLUJO: SweetAlert de éxito y redirección a pantalla de confirmación
       clearCart(); // limpiamos antes de salir
       await Swal.fire({
@@ -529,7 +557,7 @@ export default function POSPage() {
       });
 
       // Redirigimos a la pantalla con las 2 opciones (volver + imprimir ticket)
-      const url = `/pos/venta-completada?ordenId=${ordenId}&total=${encodeURIComponent(total)}`;
+      const url = `/pos/venta-completada?ordenId=${encodeURIComponent(ordenDocId)}&total=${encodeURIComponent(total)}`;
       window.location.assign(url);
 
     } catch (error) {
