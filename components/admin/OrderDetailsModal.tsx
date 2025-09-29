@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -19,13 +18,12 @@ interface ItemRow {
   talle: string;
   nombre: string;
   descripcion: string;
-  precioUnit: number; // precio que mostramos (unitario por talle)
-  subtotal: number;   // importe de la línea
+  precioUnit: number; // unitario (por talle)
 }
 
 interface Props {
   documentId: string;
-  children?: ReactNode; // 👈 trigger opcional (asChild)
+  children?: ReactNode; // trigger opcional (asChild)
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -35,11 +33,16 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const total = useMemo(
+    () => rows.reduce((acc, r) => acc + r.precioUnit * r.cantidad, 0),
+    [rows]
+  );
+
   useEffect(() => {
     if (!open) return;
     setLoading(true);
 
-    // Traemos solo los ítems de la orden y populamos variantes por talle
+    // Ítems de la orden, con variantes por talle
     const url = new URL(
       "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados"
     );
@@ -68,13 +71,13 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
           const variantes: VariantePorTalle[] =
             producto?.variantesPorTalle ?? [];
 
-          // 1) preferimos lo guardado en el ítem
+          // 1) Preferir precio guardado en el ítem
           let precioUnit: number | undefined =
             typeof item.precio_unitario === "number"
               ? Number(item.precio_unitario)
               : undefined;
 
-          // 2) si no hay, buscamos precio por talle en la variante
+          // 2) Si no hay, buscar precio por talle en la variante
           if (typeof precioUnit !== "number") {
             const v = variantes.find((vv) => vv.talle === talle);
             if (v && typeof v.precio === "number") {
@@ -82,16 +85,10 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
             }
           }
 
-          // 3) último recurso: precio base del producto
+          // 3) Último recurso: precio base del producto
           if (typeof precioUnit !== "number") {
             precioUnit = Number(producto?.precio ?? 0);
           }
-
-          // Subtotal: usamos el importe guardado si existe
-          const subtotal =
-            typeof item.importe === "number"
-              ? Number(item.importe)
-              : precioUnit * cantidad;
 
           return {
             id: item.id,
@@ -100,7 +97,6 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
             nombre: producto?.nombre || "Producto",
             descripcion: producto?.descripcion || "",
             precioUnit,
-            subtotal,
           };
         });
 
@@ -129,45 +125,66 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
         )}
       </DialogTrigger>
 
-      <DialogContent className="max-w-2xl w-full">
-        <DialogTitle className="text-xl font-bold">
+      <DialogContent className="max-w-2xl w-full rounded-2xl shadow-2xl p-6">
+        <DialogTitle className="text-xl font-semibold tracking-tight">
           Productos de la Orden
         </DialogTitle>
 
         {loading ? (
-          <p className="text-muted-foreground text-sm mt-2">
-            Cargando productos...
-          </p>
+          <div className="mt-4 space-y-2">
+            <div className="h-8 rounded-md bg-muted animate-pulse" />
+            <div className="h-8 rounded-md bg-muted animate-pulse" />
+            <div className="h-8 rounded-md bg-muted animate-pulse" />
+          </div>
         ) : rows.length === 0 ? (
-          <p className="text-muted-foreground text-sm mt-2">
+          <p className="text-muted-foreground text-sm mt-3">
             No se encontraron productos para esta orden.
           </p>
         ) : (
-          <div className="border rounded-lg overflow-hidden mt-4">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="text-left p-2">Producto</th>
-                  <th className="text-left p-2">Descripción</th>
-                  <th className="text-center p-2">Talle</th>
-                  <th className="text-center p-2">Cantidad</th>
-                  <th className="text-right p-2">Precio</th>
-                  <th className="text-right p-2">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} className="border-b">
-                    <td className="p-2">{r.nombre}</td>
-                    <td className="p-2">{r.descripcion}</td>
-                    <td className="p-2 text-center">{r.talle}</td>
-                    <td className="p-2 text-center">{r.cantidad}</td>
-                    <td className="p-2 text-right">{money(r.precioUnit)}</td>
-                    <td className="p-2 text-right">{money(r.subtotal)}</td>
+          <div className="mt-4 rounded-xl border bg-card">
+            <div className="max-h-[60vh] overflow-auto rounded-xl">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-muted/70 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
+                  <tr>
+                    <th className="text-left p-3">Producto</th>
+                    <th className="text-left p-3">Descripción</th>
+                    <th className="text-center p-3">Talle</th>
+                    <th className="text-center p-3">Cantidad</th>
+                    <th className="text-right p-3">Precio unit.</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="[&_tr:nth-child(even)]:bg-muted/30">
+                  {rows.map((r) => (
+                    <tr key={r.id} className="border-b last:border-0">
+                      <td className="p-3">{r.nombre}</td>
+                      <td className="p-3 text-muted-foreground">
+                        {r.descripcion}
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-1 text-xs font-medium">
+                          {r.talle}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium">
+                          {r.cantidad}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right font-medium">
+                        {money(r.precioUnit)}
+                      </td>
+                    </tr>
+                  ))}
+                  {/* Fila final: TOTAL */}
+                  <tr className="bg-muted/40 font-semibold">
+                    <td className="p-3 text-right" colSpan={4}>
+                      Total
+                    </td>
+                    <td className="p-3 text-right text-base">{money(total)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </DialogContent>
