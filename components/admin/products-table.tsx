@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, QrCode, Eye } from "lucide-react";
+import { Edit, QrCode, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { useProductos } from "@/app/context/ProductosContext";
@@ -24,11 +24,25 @@ function normalize(s: any): string {
   return (s ?? "").toString().toLowerCase();
 }
 
+const PAGE_SIZE = 20;
+
 export default function ProductsTable({ filtro }: Props) {
   const productos = useProductos();
   const [qrFor, setQrFor] = useState<{ id: string; value: string; nombre: string } | null>(null);
 
+  const [page, setPage] = useState(1); // 1-indexed
+  const topRef = useRef<HTMLDivElement | null>(null);
   const filtroLc = filtro.toLowerCase().trim();
+
+
+  useEffect(() => {
+    // sube al principio del documento y del componente (por si hay contenedores scrollables)
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [page]);
+
 
   const productosFiltrados = useMemo(() => {
     if (!filtroLc) return productos;
@@ -39,12 +53,48 @@ export default function ProductsTable({ filtro }: Props) {
         p.genero,
         p.colegio,            // array
         p.nivel_educativo,    // array
-        p.variantesPorTalle?.map(v => `${v.talle} ${v.precio}`)
+        p.variantesPorTalle?.map((v: any) => `${v.talle} ${v.precio}`)
       ].map(normalize).join(" ");
       return hay.includes(filtroLc);
     });
   }, [productos, filtroLc]);
 
+  // --- PAGINACIÓN ---
+  const pageCount = Math.max(1, Math.ceil(productosFiltrados.length / PAGE_SIZE));
+  useEffect(() => {
+    // si cambia el filtro o el total, volvemos a la primera página
+    setPage(1);
+  }, [filtroLc]);
+
+  // clamp por si el filtro achica la cantidad de páginas
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+
+  const startIdx = (page - 1) * PAGE_SIZE;
+  const endIdx = startIdx + PAGE_SIZE;
+  const visibles = productosFiltrados.slice(startIdx, endIdx);
+
+  const showingFrom = productosFiltrados.length ? startIdx + 1 : 0;
+  const showingTo = Math.min(endIdx, productosFiltrados.length);
+
+  // Números de página (con elipsis cuando hay muchas)
+  const pageNumbers = useMemo(() => {
+    const nums: (number | string)[] = [];
+    const delta = 2; // páginas a cada lado
+    let l: number | undefined;
+
+    for (let i = 1; i <= pageCount; i++) {
+      if (i === 1 || i === pageCount || (i >= page - delta && i <= page + delta)) {
+        if (l && i - l > 1) nums.push(i - l === 2 ? l + 1 : "…");
+        nums.push(i);
+        l = i;
+      }
+    }
+    return nums;
+  }, [page, pageCount]);
+
+  // --- helpers existentes ---
   const getStockTotal = (product: any) => {
     return Array.isArray(product.variantesPorTalle)
       ? product.variantesPorTalle.reduce((acc: number, v: any) => acc + (v.cantidad || 0), 0)
@@ -62,6 +112,7 @@ export default function ProductsTable({ filtro }: Props) {
 
   return (
     <div className="w-full">
+      <div ref={topRef} />
       {/* DIALOG QR */}
       <Dialog open={!!qrFor} onOpenChange={(o) => !o && setQrFor(null)}>
         <DialogContent className="sm:max-w-md">
@@ -71,32 +122,17 @@ export default function ProductsTable({ filtro }: Props) {
           </DialogHeader>
 
           {qrFor && (() => {
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-              qrFor.value
-            )}`;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrFor.value)}`;
 
             const handlePrint = () => {
               const w = window.open("", "_blank");
               if (!w) return;
               w.document.write(`
-          <!doctype html>
-          <html>
-            <head><meta charset="utf-8"><title>Imprimir QR</title>
-              <style>
-                html,body{margin:0;padding:0}
-                .wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;}
-                img{width:220px;height:220px}
-              </style>
-            </head>
-            <body>
-              <div class="wrap"><img id="qr" src="${qrUrl}" alt="QR" /></div>
-              <script>
-                const img = document.getElementById('qr');
-                img.addEventListener('load', () => { window.print(); window.close(); });
-              </script>
-            </body>
-          </html>
-        `);
+                <!doctype html><html><head><meta charset="utf-8"><title>Imprimir QR</title>
+                <style>html,body{margin:0;padding:0}.wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;}img{width:220px;height:220px}</style>
+                </head><body><div class="wrap"><img id="qr" src="${qrUrl}" alt="QR" /></div>
+                <script>const img=document.getElementById('qr');img.addEventListener('load',()=>{window.print();window.close();});</script>
+              </body></html>`);
               w.document.close();
               w.focus();
             };
@@ -109,12 +145,9 @@ export default function ProductsTable({ filtro }: Props) {
                 const a = document.createElement("a");
                 a.href = url;
                 a.download = `${(qrFor.nombre || "qr").toString().replace(/[^\w\-]+/g, "_")}.png`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
+                document.body.appendChild(a); a.click(); a.remove();
                 URL.revokeObjectURL(url);
               } catch {
-                // fallback: abrir en nueva pestaña si el download se bloquea por CORS
                 window.open(qrUrl, "_blank");
               }
             };
@@ -123,19 +156,15 @@ export default function ProductsTable({ filtro }: Props) {
               <div className="flex flex-col items-center gap-3">
                 <img alt="QR" className="w-56 h-56" src={qrUrl} />
                 <code className="text-xs bg-muted px-2 py-1 rounded">{qrFor.value}</code>
-
                 <div className="flex gap-2 pt-1">
                   <Button onClick={handlePrint}>Imprimir</Button>
-                  <Button variant="secondary" onClick={handleDownload}>
-                    Descargar
-                  </Button>
+                  <Button variant="secondary" onClick={handleDownload}>Descargar</Button>
                 </div>
               </div>
             );
           })()}
         </DialogContent>
       </Dialog>
-
 
       {/* DESKTOP */}
       <TooltipProvider delayDuration={150}>
@@ -152,7 +181,7 @@ export default function ProductsTable({ filtro }: Props) {
             </TableHeader>
 
             <TableBody>
-              {productosFiltrados.map((product) => {
+              {visibles.map((product) => {
                 const totalStock = getStockTotal(product);
                 const lowStock = hasLowStock(product);
                 const colegiosStr = Array.isArray(product.colegio) ? product.colegio.join(", ") : "";
@@ -162,7 +191,6 @@ export default function ProductsTable({ filtro }: Props) {
                     key={product.id}
                     className={lowStock ? "bg-red-50 border-y border-red-200" : ""}
                   >
-
                     {/* PRODUCTO */}
                     <TableCell>
                       <div className="flex items-center gap-3 min-w-0">
@@ -196,7 +224,6 @@ export default function ProductsTable({ filtro }: Props) {
                       </div>
                     </TableCell>
 
-
                     {/* GÉNERO */}
                     <TableCell className="capitalize text-center">{product.genero}</TableCell>
 
@@ -229,10 +256,9 @@ export default function ProductsTable({ filtro }: Props) {
                     <TableCell className="text-right">
                       <Link
                         href={`/admin/products/${product.documentId}`}
-                        className="inline-flex items-center gap-2 rounded-full  px-4 py-2 text-sm font-medium  "
+                        className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium"
                       >
                         <Edit className="h-4 w-4" />
-
                       </Link>
                     </TableCell>
                   </TableRow>
@@ -245,7 +271,7 @@ export default function ProductsTable({ filtro }: Props) {
 
       {/* MOBILE (tarjeta limpia y responsiva) */}
       <div className="grid gap-4 sm:hidden mt-4 px-4">
-        {productosFiltrados.map((product) => {
+        {visibles.map((product) => {
           const totalStock = getStockTotal(product);
           const lowStock = hasLowStock(product);
 
@@ -265,7 +291,6 @@ export default function ProductsTable({ filtro }: Props) {
 
               {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
                 <div className="mt-3">
-                  {/* Encabezado mini */}
                   <div className="flex justify-between text-[11px] text-muted-foreground/80 mb-1">
                     <span>Talle</span>
                     <span>Precio • Stock</span>
@@ -294,7 +319,6 @@ export default function ProductsTable({ filtro }: Props) {
                 </div>
               )}
 
-
               <div className="flex gap-2 mt-2">
                 <Button size="sm" variant="secondary" onClick={() => openQR(product)}>
                   <Eye className="h-4 w-4 mr-1" /> QR
@@ -315,6 +339,56 @@ export default function ProductsTable({ filtro }: Props) {
             </div>
           );
         })}
+      </div>
+
+      {/* FOOTER PAGINACIÓN */}
+      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="text-sm text-muted-foreground">
+          {productosFiltrados.length
+            ? <>Mostrando <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> de <span className="font-medium">{productosFiltrados.length}</span></>
+            : "Sin resultados"}
+        </div>
+
+        <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto overflow-x-auto">
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            aria-label="Página anterior"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          {pageNumbers.map((n, idx) =>
+            typeof n === "number" ? (
+              <Button
+                key={idx}
+                variant={n === page ? "default" : "outline"}
+                size="sm"
+                className={`h-9 min-w-9 px-3 ${n === page ? "pointer-events-none" : ""}`}
+                onClick={() => setPage(n)}
+                aria-current={n === page ? "page" : undefined}
+              >
+                {n}
+              </Button>
+            ) : (
+              <span key={idx} className="px-2 text-muted-foreground select-none">…</span>
+            )
+          )}
+
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={page >= pageCount}
+            aria-label="Página siguiente"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
