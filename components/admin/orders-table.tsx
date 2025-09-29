@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Eye, FileText } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Eye, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,8 +26,12 @@ interface Props {
   filtro: string;
 }
 
+const PAGE_SIZE = 20;
+
 export default function OrdersTable({ filtro }: Props) {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [page, setPage] = useState(1); // 1-indexed
+  const topRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -48,32 +52,53 @@ export default function OrdersTable({ filtro }: Props) {
     fetchOrders();
   }, []);
 
+  // Filtro
+  const filtroLc = filtro.toLowerCase().trim();
+  const ordenesFiltradas = useMemo(() => {
+    if (!filtroLc) return orders;
+    return orders.filter((o) => `ORD-${o.id}`.toLowerCase().includes(filtroLc));
+  }, [orders, filtroLc]);
 
-  function resolveUnitPrice(it: any) {
-    // 1) preferí lo que viene guardado en el ítem
-    if (typeof it.precio_unitario === "number") return it.precio_unitario;
+  // Paginación
+  const pageCount = Math.max(1, Math.ceil(ordenesFiltradas.length / PAGE_SIZE));
 
-    // 2) si no hay, buscá el precio de la variante por talle
-    const varPrice = it?.fortela_producto?.variantesPorTalle?.find(
-      (v: any) => v.talle === it.talle
-    )?.precio;
+  // Volver a la primera página cuando cambia el filtro
+  useEffect(() => setPage(1), [filtroLc]);
 
-    if (typeof varPrice === "number") return varPrice;
+  // Clamp si el filtro reduce páginas
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
-    // 3) último recurso: precio base del producto
-    return Number(it?.fortela_producto?.precio ?? 0);
-  }
+  // Scroll al top en cada cambio de página
+  useEffect(() => {
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [page]);
 
-  function resolveImporte(it: any, unit: number) {
-    if (typeof it.importe === "number") return it.importe;
-    return unit * Number(it.cantidad ?? 0);
-  }
+  const startIdx = (page - 1) * PAGE_SIZE;
+  const endIdx = startIdx + PAGE_SIZE;
+  const visibles = ordenesFiltradas.slice(startIdx, endIdx);
 
+  const showingFrom = ordenesFiltradas.length ? startIdx + 1 : 0;
+  const showingTo = Math.min(endIdx, ordenesFiltradas.length);
 
-
-  const ordenesFiltradas = orders.filter((o) =>
-    `ORD-${o.id}`.toLowerCase().includes(filtro.toLowerCase())
-  );
+  // Números de página con elipsis
+  const pageNumbers = useMemo(() => {
+    const nums: (number | string)[] = [];
+    const delta = 2;
+    let last: number | undefined;
+    for (let i = 1; i <= pageCount; i++) {
+      if (i === 1 || i === pageCount || (i >= page - delta && i <= page + delta)) {
+        if (last && i - last > 1) nums.push(i - last === 2 ? last + 1 : "…");
+        nums.push(i);
+        last = i;
+      }
+    }
+    return nums;
+  }, [page, pageCount]);
 
   const verTicketPDF = async (order: Order) => {
     const newTab = window.open("", "_blank");
@@ -85,7 +110,7 @@ export default function OrdersTable({ filtro }: Props) {
           numero: `ORD-${order.id}`,
           fecha: order.date,
           cliente: "Consumidor Final",
-          ordenId: order.documentId, // el endpoint trae ítems reales con esto
+          ordenId: order.documentId,
           total: order.total,
         }),
       });
@@ -109,6 +134,8 @@ export default function OrdersTable({ filtro }: Props) {
 
   return (
     <div className="w-full overflow-x-hidden">
+      <div ref={topRef} />
+
       {/* Desktop / Tablet */}
       <div className="hidden sm:block">
         <Table className="min-w-full table-auto">
@@ -123,7 +150,7 @@ export default function OrdersTable({ filtro }: Props) {
           </TableHeader>
 
           <TableBody>
-            {ordenesFiltradas.map((order) => (
+            {visibles.map((order) => (
               <TableRow key={order.id}>
                 <TableCell className="font-medium whitespace-nowrap">
                   ORD-{order.id}
@@ -137,7 +164,6 @@ export default function OrdersTable({ filtro }: Props) {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
-                    {/* 👁️ Modal trigger (sin duplicar botón) */}
                     <OrderDetailsModal documentId={order.documentId}>
                       <Button variant="ghost" size="icon" title="Ver detalles">
                         <Eye className="h-4 w-4" />
@@ -145,7 +171,6 @@ export default function OrdersTable({ filtro }: Props) {
                       </Button>
                     </OrderDetailsModal>
 
-                    {/* 📄 PDF */}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -165,7 +190,7 @@ export default function OrdersTable({ filtro }: Props) {
 
       {/* Mobile (cards) */}
       <div className="grid gap-4 sm:hidden mt-4 px-4">
-        {ordenesFiltradas.map((order) => (
+        {visibles.map((order) => (
           <div
             key={order.id}
             className="border rounded-2xl p-4 shadow-sm bg-white flex flex-col gap-3"
@@ -181,7 +206,6 @@ export default function OrdersTable({ filtro }: Props) {
             </div>
 
             <div className="flex gap-2 mt-1">
-              {/* 👁️ Modal trigger */}
               <OrderDetailsModal documentId={order.documentId}>
                 <Button variant="ghost" size="icon" title="Ver detalles">
                   <Eye className="w-5 h-5" />
@@ -189,7 +213,6 @@ export default function OrdersTable({ filtro }: Props) {
                 </Button>
               </OrderDetailsModal>
 
-              {/* 📄 PDF */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -202,6 +225,64 @@ export default function OrdersTable({ filtro }: Props) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Footer paginación */}
+      <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="text-sm text-muted-foreground">
+          {ordenesFiltradas.length ? (
+            <>
+              Mostrando <span className="font-medium">{showingFrom}</span>–
+              <span className="font-medium">{showingTo}</span> de{" "}
+              <span className="font-medium">{ordenesFiltradas.length}</span>
+            </>
+          ) : (
+            "Sin resultados"
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto overflow-x-auto">
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            aria-label="Página anterior"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          {pageNumbers.map((n, idx) =>
+            typeof n === "number" ? (
+              <Button
+                key={idx}
+                variant={n === page ? "default" : "outline"}
+                size="sm"
+                className={`h-9 min-w-9 px-3 ${n === page ? "pointer-events-none" : ""}`}
+                onClick={() => setPage(n)}
+                aria-current={n === page ? "page" : undefined}
+              >
+                {n}
+              </Button>
+            ) : (
+              <span key={idx} className="px-2 text-muted-foreground select-none">
+                …
+              </span>
+            )
+          )}
+
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={page >= pageCount}
+            aria-label="Página siguiente"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
