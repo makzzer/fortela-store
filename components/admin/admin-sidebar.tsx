@@ -22,11 +22,7 @@ const sidebarItems = [
     href: "/admin/products",
     icon: Package,
   },
-  {
-    title: "Customers",
-    href: "/admin/customers",
-    icon: Users,
-  },
+
   {
     title: "Stock Management",
     href: "/admin/stock",
