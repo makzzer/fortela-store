@@ -11,15 +11,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Eye } from "lucide-react";
 
-interface Item {
+type VariantePorTalle = { talle: string; precio?: number };
+
+interface ItemRow {
   id: number;
   cantidad: number;
   talle: string;
-  producto: {
-    nombre: string;
-    descripcion: string;
-    precio: number;
-  };
+  nombre: string;
+  descripcion: string;
+  precioUnit: number; // precio que mostramos (unitario por talle)
+  subtotal: number;   // importe de la línea
 }
 
 interface Props {
@@ -27,8 +28,10 @@ interface Props {
   children?: ReactNode; // 👈 trigger opcional (asChild)
 }
 
+const money = (n: number) => `$${n.toFixed(2)}`;
+
 export default function OrderDetailsModal({ documentId, children }: Props) {
-  const [items, setItems] = useState<Item[]>([]);
+  const [rows, setRows] = useState<ItemRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -36,37 +39,76 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
     if (!open) return;
     setLoading(true);
 
-    const url =
-      "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados?populate=*";
+    // Traemos solo los ítems de la orden y populamos variantes por talle
+    const url = new URL(
+      "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados"
+    );
+    url.searchParams.set(
+      "filters[fortela_orden][documentId][$eq]",
+      documentId
+    );
+    url.searchParams.set(
+      "populate[fortela_producto][populate]",
+      "variantesPorTalle"
+    );
+    url.searchParams.set("pagination[limit]", "100");
 
-    fetch(url)
+    fetch(url.toString(), { cache: "no-store" })
       .then(async (res) => {
         const json = await res.json();
-
         if (!res.ok || !json.data) {
           throw new Error(json.error?.message || "Error al obtener productos");
         }
 
-        const filtered = json.data.filter(
-          (item: any) => item.fortela_orden?.documentId === documentId
-        );
+        const mapped: ItemRow[] = (json.data as any[]).map((item) => {
+          const cantidad = Number(item.cantidad ?? 0);
+          const talle: string = item.talle ?? "-";
 
-        const mapped = filtered.map((item: any) => ({
-          id: item.id,
-          cantidad: item.cantidad,
-          talle: item.talle,
-          producto: {
-            nombre: item.fortela_producto?.nombre || "",
-            descripcion: item.fortela_producto?.descripcion || "",
-            precio: item.fortela_producto?.precio || 0,
-          },
-        }));
+          const producto = item.fortela_producto ?? {};
+          const variantes: VariantePorTalle[] =
+            producto?.variantesPorTalle ?? [];
 
-        setItems(mapped);
+          // 1) preferimos lo guardado en el ítem
+          let precioUnit: number | undefined =
+            typeof item.precio_unitario === "number"
+              ? Number(item.precio_unitario)
+              : undefined;
+
+          // 2) si no hay, buscamos precio por talle en la variante
+          if (typeof precioUnit !== "number") {
+            const v = variantes.find((vv) => vv.talle === talle);
+            if (v && typeof v.precio === "number") {
+              precioUnit = Number(v.precio);
+            }
+          }
+
+          // 3) último recurso: precio base del producto
+          if (typeof precioUnit !== "number") {
+            precioUnit = Number(producto?.precio ?? 0);
+          }
+
+          // Subtotal: usamos el importe guardado si existe
+          const subtotal =
+            typeof item.importe === "number"
+              ? Number(item.importe)
+              : precioUnit * cantidad;
+
+          return {
+            id: item.id,
+            cantidad,
+            talle,
+            nombre: producto?.nombre || "Producto",
+            descripcion: producto?.descripcion || "",
+            precioUnit,
+            subtotal,
+          };
+        });
+
+        setRows(mapped);
       })
       .catch((err) => {
         console.error("❌ ERROR FETCHING ITEMS:", err);
-        setItems([]);
+        setRows([]);
       })
       .finally(() => setLoading(false));
   }, [open, documentId]);
@@ -96,7 +138,7 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
           <p className="text-muted-foreground text-sm mt-2">
             Cargando productos...
           </p>
-        ) : items.length === 0 ? (
+        ) : rows.length === 0 ? (
           <p className="text-muted-foreground text-sm mt-2">
             No se encontraron productos para esta orden.
           </p>
@@ -114,18 +156,14 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} className="border-b">
-                    <td className="p-2">{item.producto.nombre}</td>
-                    <td className="p-2">{item.producto.descripcion}</td>
-                    <td className="p-2 text-center">{item.talle}</td>
-                    <td className="p-2 text-center">{item.cantidad}</td>
-                    <td className="p-2 text-right">
-                      ${item.producto.precio.toFixed(2)}
-                    </td>
-                    <td className="p-2 text-right">
-                      {(item.producto.precio * item.cantidad).toFixed(2)}
-                    </td>
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-b">
+                    <td className="p-2">{r.nombre}</td>
+                    <td className="p-2">{r.descripcion}</td>
+                    <td className="p-2 text-center">{r.talle}</td>
+                    <td className="p-2 text-center">{r.cantidad}</td>
+                    <td className="p-2 text-right">{money(r.precioUnit)}</td>
+                    <td className="p-2 text-right">{money(r.subtotal)}</td>
                   </tr>
                 ))}
               </tbody>

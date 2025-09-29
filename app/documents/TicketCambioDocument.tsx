@@ -6,6 +6,7 @@ export type TicketItem = {
   talle?: string;
   cantidad: number;
   precio: number;
+  importe?: number;
 };
 
 export type TicketProps = {

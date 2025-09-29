@@ -450,15 +450,27 @@ export default function POSPage() {
 
         const productoId = Number(producto.id);
 
+
+        // ...tenés "producto" de Strapi ya con variantesPorTalle y el item del cart...
+        const precioVariante =
+          Number(item.price ??                      // precio que ya mostrás en el cart (debería venir por talle)
+            producto?.variantesPorTalle?.find((v: any) => v.talle === item.size)?.precio ??
+            producto?.precio ?? 0);
+
+
+
         // 4.1) crear ítem con ids numéricos (sin connect)
         const itemPayload = {
           data: {
             cantidad: Number(item.quantity),
-            fortela_producto: productoId,    // número plano
-            fortela_orden: Number(ordenId),  // número plano
-            talle: item.size,                // string
+            talle: item.size,                                  // string
+            precio_unitario: precioVariante,                 // << GUARDA el precio por talle
+            importe: precioVariante * Number(item.quantity), // << GUARDA el subtotal de la línea
+            fortela_producto: Number(productoId),              // número plano
+            fortela_orden: Number(ordenId),                    // número plano
           },
         };
+
 
         const itemRes = await fetch(
           "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados",

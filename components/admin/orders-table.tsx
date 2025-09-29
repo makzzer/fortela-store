@@ -48,6 +48,29 @@ export default function OrdersTable({ filtro }: Props) {
     fetchOrders();
   }, []);
 
+
+  function resolveUnitPrice(it: any) {
+    // 1) preferí lo que viene guardado en el ítem
+    if (typeof it.precio_unitario === "number") return it.precio_unitario;
+
+    // 2) si no hay, buscá el precio de la variante por talle
+    const varPrice = it?.fortela_producto?.variantesPorTalle?.find(
+      (v: any) => v.talle === it.talle
+    )?.precio;
+
+    if (typeof varPrice === "number") return varPrice;
+
+    // 3) último recurso: precio base del producto
+    return Number(it?.fortela_producto?.precio ?? 0);
+  }
+
+  function resolveImporte(it: any, unit: number) {
+    if (typeof it.importe === "number") return it.importe;
+    return unit * Number(it.cantidad ?? 0);
+  }
+
+
+
   const ordenesFiltradas = orders.filter((o) =>
     `ORD-${o.id}`.toLowerCase().includes(filtro.toLowerCase())
   );
