@@ -495,6 +495,31 @@ export default function POSPage() {
         }
       }
 
+      // 4.3) Generar ticket de cambio POS y abrirlo
+      try {
+        const newTab = window.open("", "_blank"); // evita bloqueador de popups
+        const pdfRes = await fetch("/api/ticket-cambio/pos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ordenNumericId: ordenId,                 // 👈 id numérico recién creado
+            numero: `ORD-${ordenId}`,
+            fecha: new Date().toLocaleDateString("es-AR"),
+            cliente: "Consumidor Final",             // reemplazalo si tenés cliente
+            total,                                   // opcional, el server también calcula
+          }),
+        });
+
+        if (!pdfRes.ok) throw new Error(await pdfRes.text().catch(() => "Error generando PDF"));
+
+        const blob = await pdfRes.blob();
+        const url = URL.createObjectURL(blob);
+        if (newTab) newTab.location.href = url; else window.open(url, "_blank");
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } catch (e) {
+        console.error("Ticket POS error:", e);
+        // no frenes el checkout por esto; si querés, mostrás un toast suave
+      }
 
 
       // 5) Ok
