@@ -339,9 +339,11 @@ export default function POSPage() {
 
   const clearCart = () => setCart([]);
 
+  // Totales (SIN impuestos)
   const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const tax = subtotal * 0.07;
-  const total = subtotal + tax;
+  const tax = 0;                 // <- eliminado
+  const total = subtotal;        // <- total = solo productos
+
 
   const handleCheckout = async () => {
     // 1) Bloqueo por talles pendientes
@@ -353,13 +355,13 @@ export default function POSPage() {
       });
       return;
     }
-  
+
     setIsCheckingOut(true);
-  
+
     try {
       // 2) Traemos productos una sola vez y validamos stock
       const productosByDoc: Record<string, any> = {};
-  
+
       for (const item of cart) {
         if (!item.size) {
           await Swal.fire({
@@ -371,22 +373,22 @@ export default function POSPage() {
           setIsCheckingOut(false);
           return;
         }
-  
+
         const res = await fetch(
           `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate=*`
         );
         const data = await res.json();
         const producto = data?.data?.[0];
-  
+
         if (!producto) {
           throw new Error(`Producto no encontrado: ${item.documentId}`);
         }
-  
+
         productosByDoc[item.documentId] = producto;
-  
+
         const variante = producto.variantesPorTalle?.find((v: any) => v.talle === item.size);
         const stockDisponible = variante?.cantidad ?? 0;
-  
+
         if (item.quantity > stockDisponible) {
           await Swal.fire({
             icon: "error",
@@ -398,7 +400,7 @@ export default function POSPage() {
           return;
         }
       }
-  
+
       // 3) Crear orden (con logs)
       const fecha = new Date().toISOString();
       const ordenPayload = {
@@ -411,18 +413,18 @@ export default function POSPage() {
           fortela_cliente: { connect: [Number(3)] },
         },
       };
-  
+
       console.log("📦 Orden - payload:", ordenPayload);
-  
+
       const ordenRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(ordenPayload),
       });
-  
+
       const ordenJson = await ordenRes.json();
       console.log("📦 Orden - status:", ordenRes.status, "body:", ordenJson);
-  
+
       if (!ordenRes.ok) {
         await Swal.fire({
           icon: "error",
@@ -432,7 +434,7 @@ export default function POSPage() {
         throw new Error("Error al crear la orden");
       }
       const ordenId: number = ordenJson.data.id;
-  
+
       // 4) Crear items + actualizar stock por talle
       for (const item of cart) {
         // re-fetch del producto (como en el Shop)
@@ -441,13 +443,13 @@ export default function POSPage() {
         );
         const productoJson = await productoRes.json();
         const producto = productoJson?.data?.[0];
-  
+
         if (!producto) {
           throw new Error(`Producto no encontrado: ${item.documentId}`);
         }
-  
+
         const productoId = Number(producto.id);
-  
+
         // 4.1) crear ítem con ids numéricos (sin connect)
         const itemPayload = {
           data: {
@@ -457,7 +459,7 @@ export default function POSPage() {
             talle: item.size,                // string
           },
         };
-  
+
         const itemRes = await fetch(
           "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados",
           {
@@ -471,19 +473,19 @@ export default function POSPage() {
           console.error("🧾 Error item:", itemJson);
           throw new Error(`Error al crear item de orden para ${item.name}`);
         }
-  
+
         // 4.2) actualizar stock por talle
         const nuevasVariantes = (producto.variantesPorTalle || []).map((v: any) => ({
           talle: v.talle,
           cantidad: v.talle === item.size ? Math.max(0, (v.cantidad ?? 0) - item.quantity) : v.cantidad,
           precio: v.precio,
         }));
-  
+
         const nuevoStockTotal = nuevasVariantes.reduce(
           (sum: number, v: any) => sum + (v.cantidad ?? 0),
           0
         );
-  
+
         const putRes = await fetch(
           `https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}?populate=*`,
           {
@@ -503,7 +505,7 @@ export default function POSPage() {
           throw new Error(`Error al actualizar stock de ${item.name}`);
         }
       }
-  
+
       // 4.3) ✅ NUEVO FLUJO: SweetAlert de éxito y redirección a pantalla de confirmación
       clearCart(); // limpiamos antes de salir
       await Swal.fire({
@@ -513,11 +515,11 @@ export default function POSPage() {
         timer: 1200,
         showConfirmButton: false,
       });
-  
+
       // Redirigimos a la pantalla con las 2 opciones (volver + imprimir ticket)
       const url = `/pos/venta-completada?ordenId=${ordenId}&total=${encodeURIComponent(total)}`;
       window.location.assign(url);
-  
+
     } catch (error) {
       console.error("❌ Checkout error:", error);
       toast({
@@ -529,7 +531,7 @@ export default function POSPage() {
       setIsCheckingOut(false);
     }
   };
-  
+
 
 
   return (
@@ -605,7 +607,6 @@ export default function POSPage() {
                 <>
                   <div className="space-y-3 mb-4">
                     <div className="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span>Impuesto (7%)</span><span>${tax.toFixed(2)}</span></div>
                     <Separator />
                     <div className="flex justify-between font-semibold text-lg">
                       <span>Total</span><span>${total.toFixed(2)}</span>
