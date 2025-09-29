@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,25 +24,24 @@ interface Item {
 
 interface Props {
   documentId: string;
+  children?: ReactNode; // 👈 trigger opcional (asChild)
 }
 
-export default function OrderDetailsModal({ documentId }: Props) {
+export default function OrderDetailsModal({ documentId, children }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-
     setLoading(true);
 
-    const url = "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados?populate=*";
-    console.log("🔎 FETCH URL:", url);
+    const url =
+      "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados?populate=*";
 
     fetch(url)
       .then(async (res) => {
         const json = await res.json();
-        console.log("📥 RESPONSE:", json);
 
         if (!res.ok || !json.data) {
           throw new Error(json.error?.message || "Error al obtener productos");
@@ -74,19 +74,28 @@ export default function OrderDetailsModal({ documentId }: Props) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-                <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start font-normal gap-2"
-        >
-          <Eye className="w-4 h-4 mr-2" /> Ver Detalles
-        </Button>
+        {children ? (
+          children
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start font-normal gap-2"
+          >
+            <Eye className="w-4 h-4 mr-2" /> Ver Detalles
+          </Button>
+        )}
       </DialogTrigger>
+
       <DialogContent className="max-w-2xl w-full">
-        <DialogTitle className="text-xl font-bold">Productos de la Orden</DialogTitle>
+        <DialogTitle className="text-xl font-bold">
+          Productos de la Orden
+        </DialogTitle>
 
         {loading ? (
-          <p className="text-muted-foreground text-sm mt-2">Cargando productos...</p>
+          <p className="text-muted-foreground text-sm mt-2">
+            Cargando productos...
+          </p>
         ) : items.length === 0 ? (
           <p className="text-muted-foreground text-sm mt-2">
             No se encontraron productos para esta orden.
@@ -115,7 +124,7 @@ export default function OrderDetailsModal({ documentId }: Props) {
                       ${item.producto.precio.toFixed(2)}
                     </td>
                     <td className="p-2 text-right">
-                      ${(item.producto.precio * item.cantidad).toFixed(2)}
+                      {(item.producto.precio * item.cantidad).toFixed(2)}
                     </td>
                   </tr>
                 ))}
