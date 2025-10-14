@@ -10,6 +10,13 @@ interface VariantePorTalle {
   precio: number
 }
 
+interface VariantesPorColegio {
+  colegio?: string | null
+  // En tu Strapi quedó "variantesPorTalles" (con s). Usamos ambos por compat.
+  variantesPorTalles?: VariantePorTalle[]
+  variantesPorTalle?: VariantePorTalle[]
+}
+
 interface Producto {
   id: number
   documentId: string
@@ -19,9 +26,12 @@ interface Producto {
   stock: number
   genero: string
   qr_code?: string
-  colegio?: string[]            // ahora array
+  colegio?: string[]
   nivel_educativo?: string[]
+  // Viejo (global, sin colegio)
   variantesPorTalle?: VariantePorTalle[]
+  // Nuevo (por colegio)
+  variantesPorColegio?: VariantesPorColegio[]
 }
 
 const ProductosContext = createContext<Producto[]>([])
@@ -37,8 +47,11 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
       let all: any[] = []
 
       while (true) {
+        // 👇 Populate dirigido para traer los talles dentro de cada colegio
         const { data } = await axios.get(
-          `${base}?populate=*&pagination[page]=${page}&pagination[pageSize]=${pageSize}`
+          `${base}?pagination[page]=${page}&pagination[pageSize]=${pageSize}`
+          + `&populate[variantesPorColegio][populate]=*`
+          // si necesitás imagen u otros, agregalos con otro populate=...
         )
         all = all.concat(data.data)
         const { pageCount } = data.meta.pagination
@@ -47,8 +60,37 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
       }
 
       const processed = all.map((item: any) => {
-        const variantes = item.variantesPorTalle || []
-        const totalStock = variantes.reduce((sum: number, v: any) => sum + (v.cantidad || 0), 0)
+        // Normalizamos: algunos docs pueden venir con nombres viejos o valores no array
+        const rawVpc =
+          item.variantesPorColegio ?? item.VariantesPorColegio ?? null
+        const vpc: any[] = Array.isArray(rawVpc) ? rawVpc : (rawVpc ? [rawVpc] : [])
+
+        const vptGlobal = item.variantesPorTalle ?? item.variantesPorTalles ?? []
+
+        let totalStock = 0
+
+        // Sumar stock desde el esquema nuevo (colegio -> talles)
+        const variantesPorColegio: VariantesPorColegio[] = vpc.map((row: any) => {
+          const nested = row.variantesPorTalle ?? row.variantesPorTalles ?? []
+          const talles: VariantePorTalle[] = (nested || []).map((v: any) => {
+            totalStock += v.cantidad || 0
+            return {
+              id: v.id,
+              talle: v.talle,
+              cantidad: v.cantidad,
+              precio: v.precio,
+            }
+          })
+          return {
+            colegio: row.colegio ?? null,
+            variantesPorTalles: talles,   // guardamos en el nombre “actual”
+          }
+        })
+
+        // Compat: si no hay colegios, calculamos el total con el array global de talles
+        if (!vpc.length && vptGlobal.length) {
+          totalStock = vptGlobal.reduce((s: number, v: any) => s + (v.cantidad || 0), 0)
+        }
 
         return {
           id: item.id,
@@ -56,14 +98,15 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
           nombre: item.nombre,
           descripcion: item.descripcion,
           precio: item.precio,
-          stock: totalStock,
+          stock: totalStock,               // ← total del producto (1 solo QR)
           genero: item.genero,
           qr_code: item.qr_code,
-          colegio: item.colegio,                   // array de strings
+          colegio: item.colegio,
           nivel_educativo: item.nivel_educativo,
-          variantesPorTalle: variantes.map((v: any) => ({
+          variantesPorTalle: (vptGlobal || []).map((v: any) => ({
             id: v.id, talle: v.talle, cantidad: v.cantidad, precio: v.precio
           })),
+          variantesPorColegio,
         } as Producto
       })
 

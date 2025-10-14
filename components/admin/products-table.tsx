@@ -34,6 +34,8 @@ export default function ProductsTable({ filtro }: Props) {
   const topRef = useRef<HTMLDivElement | null>(null);
   const filtroLc = filtro.toLowerCase().trim();
 
+  const [detailFor, setDetailFor] = useState<any | null>(null);
+
 
   useEffect(() => {
     // sube al principio del documento y del componente (por si hay contenedores scrollables)
@@ -47,17 +49,28 @@ export default function ProductsTable({ filtro }: Props) {
   const productosFiltrados = useMemo(() => {
     if (!filtroLc) return productos;
     return productos.filter((p) => {
+      const nested = getNestedVariants(p); // ← nuevo
+      const nestedText = nested
+        .map((x) => `${x.colegio} ${x.talle} ${x.precio} ${x.cantidad}`)
+        .join(" ");
+      const legacyTalles = p.variantesPorTalle?.map((v: any) => `${v.talle} ${v.precio} ${v.cantidad}`).join(" ") ?? "";
+
       const hay = [
         p.nombre,
         p.descripcion,
         p.genero,
-        p.colegio,            // array
-        p.nivel_educativo,    // array
-        p.variantesPorTalle?.map((v: any) => `${v.talle} ${v.precio}`)
-      ].map(normalize).join(" ");
+        Array.isArray(p.colegio) ? p.colegio.join(" ") : p.colegio,
+        Array.isArray(p.nivel_educativo) ? p.nivel_educativo.join(" ") : p.nivel_educativo,
+        legacyTalles,
+        nestedText, // ← incluye colegios/talles del nuevo esquema
+      ]
+        .map(normalize)
+        .join(" ");
+
       return hay.includes(filtroLc);
     });
   }, [productos, filtroLc]);
+
 
   // --- PAGINACIÓN ---
   const pageCount = Math.max(1, Math.ceil(productosFiltrados.length / PAGE_SIZE));
@@ -94,16 +107,125 @@ export default function ProductsTable({ filtro }: Props) {
     return nums;
   }, [page, pageCount]);
 
+
+
+  // --- NUEVOS HELPERS PARA FORMATO "por colegio" ---
+  const getNestedVariants = (product: any) => {
+    const vpc = Array.isArray(product.variantesPorColegio)
+      ? product.variantesPorColegio
+      : [];
+    // En tu API quedó "variantesPorTalles" (con s)
+    const flattened: Array<{ colegio: string; talle: string; cantidad: number; precio: number }> = [];
+    for (const c of vpc) {
+      const colegio = (c?.colegio ?? "").toString();
+      const talles = Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : [];
+      for (const v of talles) {
+        flattened.push({
+          colegio,
+          talle: v?.talle ?? "",
+          cantidad: Number(v?.cantidad ?? 0),
+          precio: Number(v?.precio ?? 0),
+        });
+      }
+    }
+    return flattened;
+  };
+
+
+  const renderDetailTable = (product: any) => {
+    const vpc = Array.isArray(product?.variantesPorColegio) ? product.variantesPorColegio : [];
+    if (!vpc.length) return null;
+
+    return (
+      <div className="mt-2 space-y-4">
+        {vpc.map((c: any, i: number) => (
+          <div key={i} className="border rounded-lg overflow-hidden">
+            <div className="px-4 py-2 font-semibold bg-muted text-sm">
+              {c?.colegio || "Sin colegio"}
+            </div>
+            <div className="max-h-64 overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-background">
+                  <tr className="text-left">
+                    <th className="px-4 py-2 w-1/3">Talle</th>
+                    <th className="px-4 py-2 w-1/3">Precio</th>
+                    <th className="px-4 py-2 w-1/3 text-right">Stock</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : []).map((v: any, j: number) => {
+                    const qty = Number(v?.cantidad ?? 0);
+                    const price = Number(v?.precio ?? 0);
+                    return (
+                      <tr key={v?.id ?? `${i}-${j}`} className="border-t">
+                        <td className="px-4 py-2 capitalize">{v?.talle ?? "-"}</td>
+                        <td className="px-4 py-2">{isNaN(price) ? "-" : `$${price.toLocaleString("es-AR")}`}</td>
+                        <td className={`px-4 py-2 text-right ${qty <= 10 ? "text-red-700 font-semibold" : ""}`}>{qty} u.</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+
+  // Construye lineas compactas para el preview en tabla (desktop y mobile)
+  const buildColegioPreviewLines = (product: any) => {
+    const vpc = Array.isArray(product.variantesPorColegio)
+      ? product.variantesPorColegio
+      : [];
+    // armamos: "San Marcelo: S $2300 • 20u · L $5400 • 200u"
+    return vpc.map((c: any) => {
+      const colegio = (c?.colegio ?? "").toString();
+      const talles = (Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : [])
+        .map((v: any) => {
+          const qty = Number(v?.cantidad ?? 0);
+          const price = Number(v?.precio ?? 0);
+          const priceStr = isNaN(price) ? "-" : `$${price.toLocaleString("es-AR")}`;
+          return `${v?.talle ?? "-"} ${priceStr} • ${qty}u`;
+        })
+        .join(" · ");
+      return `${colegio ? colegio + ": " : ""}${talles}`;
+    });
+  };
+
+
+
+
+  // --- helpers existentes ---
   // --- helpers existentes ---
   const getStockTotal = (product: any) => {
-    return Array.isArray(product.variantesPorTalle)
-      ? product.variantesPorTalle.reduce((acc: number, v: any) => acc + (v.cantidad || 0), 0)
-      : product.stock || 0;
+    // Usamos el total ya calculado en el Context (seguro y simple)
+    if (typeof product?.stock === "number") return product.stock;
+
+    // fallback legacy por si algún item no trae "stock"
+    if (Array.isArray(product?.variantesPorTalle)) {
+      return product.variantesPorTalle.reduce((acc: number, v: any) => acc + (Number(v?.cantidad) || 0), 0);
+    }
+
+    // fallback nuevo: sumamos anidados
+    const nested = getNestedVariants(product);
+    return nested.reduce((acc, v) => acc + (v.cantidad || 0), 0);
   };
 
   const hasLowStock = (product: any) => {
-    return product.variantesPorTalle?.some((v: any) => v.cantidad <= 10);
+    // Si hay variantes globales (legacy)
+    if (Array.isArray(product?.variantesPorTalle) && product.variantesPorTalle.length > 0) {
+      return product.variantesPorTalle.some((v: any) => Number(v?.cantidad ?? 0) <= 10);
+    }
+    // Si hay variantes por colegio
+    const nested = getNestedVariants(product);
+    if (nested.length > 0) {
+      return nested.some((v) => v.cantidad <= 10);
+    }
+    return false;
   };
+
 
   const openQR = (p: any) => {
     const value = buildProductQRData(p.documentId); // ← SOLO documentId
@@ -227,17 +349,35 @@ export default function ProductsTable({ filtro }: Props) {
                     {/* GÉNERO */}
                     <TableCell className="capitalize text-center">{product.genero}</TableCell>
 
+
                     {/* STOCK */}
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">
                         <Badge variant={totalStock > 10 ? "outline" : "destructive"}>
                           {totalStock} en stock
                         </Badge>
+
+
+                        {/* NUEVO: botón para abrir modal de detalle */}
+                        {Array.isArray(product.variantesPorColegio) && product.variantesPorColegio.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="px-2 h-7 text-xs"
+                            onClick={() => setDetailFor(product)}
+                          >
+                            Más info
+                          </Button>
+                        )}
+
+
+                        {/* LEGACY: detalle por talle global (sigue funcionando igual) */}
                         {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
                           <StockDetailPopover variantes={product.variantesPorTalle} />
                         )}
                       </div>
                     </TableCell>
+
 
                     {/* QR */}
                     <TableCell className="text-center">
@@ -251,6 +391,33 @@ export default function ProductsTable({ filtro }: Props) {
                         <Eye className="h-5 w-5" />
                       </Button>
                     </TableCell>
+
+
+                    {/* DIALOG DETALLE POR COLEGIO/TALLE */}
+                    <Dialog open={!!detailFor} onOpenChange={(o) => !o && setDetailFor(null)}>
+                      <DialogContent className="sm:max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>Detalle de stock</DialogTitle>
+                          <DialogDescription className="truncate">
+                            {detailFor?.nombre}
+                          </DialogDescription>
+                        </DialogHeader>
+                        {detailFor && (
+                          <div>
+                            <div className="flex items-center justify-between text-sm mb-2">
+                              <span className="text-muted-foreground">
+                                {Array.isArray(detailFor?.variantesPorColegio) ? detailFor.variantesPorColegio.length : 0} colegio(s)
+                              </span>
+                              <span className="font-medium">
+                                Total: {typeof detailFor?.stock === "number" ? detailFor.stock : 0} u.
+                              </span>
+                            </div>
+                            {renderDetailTable(detailFor)}
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
+
 
                     {/* EDITAR */}
                     <TableCell className="text-right">
@@ -288,6 +455,33 @@ export default function ProductsTable({ filtro }: Props) {
               </div>
 
               <p className="text-sm text-muted-foreground capitalize">Género: {product.genero}</p>
+              {/* NUEVO: detalle por colegio -> talles */}
+              {Array.isArray(product.variantesPorColegio) && product.variantesPorColegio.length > 0 && (
+                <div className="mt-3">
+                  <div className="text-[11px] text-muted-foreground/80 mb-1">Colegio • Talle • Precio • Stock</div>
+                  <div className="text-sm space-y-2">
+                    {product.variantesPorColegio.map((c: any, idxC: number) => (
+                      <div key={idxC}>
+                        <div className="font-medium text-[13px]">{c?.colegio ?? "-"}</div>
+                        <div className="mt-1 space-y-1">
+                          {(Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : []).map((v: any, idxV: number) => {
+                            const qty = Number(v?.cantidad ?? 0);
+                            const price = Number(v?.precio ?? 0);
+                            return (
+                              <div key={v?.id ?? `${idxC}-${idxV}`} className={`flex justify-between ${qty <= 10 ? "text-red-700 font-semibold" : "text-muted-foreground"}`}>
+                                <span className="capitalize">{v?.talle ?? "-"}</span>
+                                <span>${isNaN(price) ? "-" : price.toLocaleString("es-AR")} • {qty} u.</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/** LEGACY: detalle por talle global */}
 
               {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
                 <div className="mt-3">
@@ -295,29 +489,23 @@ export default function ProductsTable({ filtro }: Props) {
                     <span>Talle</span>
                     <span>Precio • Stock</span>
                   </div>
-
                   <div className="text-sm mb-3 space-y-1">
                     {product.variantesPorTalle.map((v: any, idx: number) => {
                       const key = v?.id ?? `${v?.talle ?? "sin-talle"}-${idx}`;
                       const qty = Number(v?.cantidad ?? 0);
                       const price = Number(v?.precio ?? 0);
                       const isLow = qty <= 10;
-
                       return (
-                        <div
-                          key={key}
-                          className={`flex justify-between ${isLow ? "text-red-700 font-semibold" : "text-muted-foreground"}`}
-                        >
+                        <div key={key} className={`flex justify-between ${isLow ? "text-red-700 font-semibold" : "text-muted-foreground"}`}>
                           <span className="capitalize">{v?.talle ?? "-"}</span>
-                          <span>
-                            ${price.toLocaleString("es-AR")} • {qty} u.
-                          </span>
+                          <span>${isNaN(price) ? "-" : price.toLocaleString("es-AR")} • {qty} u.</span>
                         </div>
                       );
                     })}
                   </div>
                 </div>
               )}
+
 
               <div className="flex gap-2 mt-2">
                 <Button size="sm" variant="secondary" onClick={() => openQR(product)}>

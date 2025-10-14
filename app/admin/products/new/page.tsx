@@ -1,22 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Swal from "sweetalert2";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus, Minus, School } from "lucide-react";
 import MultiSelect, { Option } from "@/components/shared/MultiSelect";
 
+// --- constantes/UI ---
 const generosUI = [
   { label: "Niña", value: "niña" },
   { label: "Niño", value: "niño" },
   { label: "Unisex", value: "unisex" },
 ];
 
-// Opciones desde tu glosario (nombres reales)
 const COLEGIOS_OPTS: Option[] = [
   { label: "San marcelo", value: "San marcelo" },
   { label: "José Hernández", value: "José Hernández" },
@@ -35,78 +35,162 @@ const COLEGIOS_OPTS: Option[] = [
   { label: "Producto básico", value: "Producto básico" },
 ];
 
+// --- tipos ---
 interface VarianteTalle {
   talle: string;
   cantidad: number;
   precio: number;
 }
+interface ColegioBlock {
+  colegio: string;                 // texto (sin relación)
+  variantesPorTalles: VarianteTalle[];
+}
 
 export default function AddProductPage() {
   const router = useRouter();
-  const [resultado, setResultado] = useState<string | null>(null);
-  const [nuevoTalle, setNuevoTalle] = useState("");
-  const [colegiosSel, setColegiosSel] = useState<string[]>([]);
 
+  // campos base
   const [form, setForm] = useState({
     nombre: "",
     descripcion: "",
     genero: "",
     imagen: null as File | null,
-    variantesPorTalle: [] as VarianteTalle[],
   });
 
-  const agregarTalle = () => {
-    const talle = nuevoTalle.trim().toUpperCase();
-    if (!talle) return;
-    if (form.variantesPorTalle.some((v) => v.talle === talle)) return;
-    setForm((prev) => ({
-      ...prev,
-      variantesPorTalle: [...prev.variantesPorTalle, { talle, cantidad: 0, precio: 0 }],
+  // selección de colegios (chips)
+  const [colegiosSel, setColegiosSel] = useState<string[]>([]);
+
+  // talles globales (para productos sin colegio)
+  const [globalTalles, setGlobalTalles] = useState<VarianteTalle[]>([]);
+
+  // bloques por colegio (cada uno con sus talles)
+  const [bloques, setBloques] = useState<ColegioBlock[]>([]);
+
+  // Mantener sincronía entre selección y bloques
+  useMemo(() => {
+    setBloques((prev) => {
+      const map = new Map(prev.map(b => [b.colegio, b]));
+      // agregar nuevos seleccionados
+      for (const c of colegiosSel) {
+        if (!map.has(c)) map.set(c, { colegio: c, variantesPorTalles: [] });
+      }
+      // quitar los que se deseleccionaron
+      return colegiosSel.map(c => map.get(c)!) // mantiene el orden del multiselect
+    });
+  }, [colegiosSel]);
+
+  // helpers UI
+  const addTalleTo = (colegio: string) => {
+    setBloques((prev) =>
+      prev.map(b =>
+        b.colegio !== colegio
+          ? b
+          : { ...b, variantesPorTalles: [...b.variantesPorTalles, { talle: "", cantidad: 0, precio: 0 }] }
+      )
+    );
+  };
+  const updateTalleIn = (colegio: string, idx: number, field: keyof VarianteTalle, value: string | number) => {
+    setBloques(prev => prev.map(b => {
+      if (b.colegio !== colegio) return b;
+      const arr = b.variantesPorTalles.slice();
+      const v = arr[idx];
+      arr[idx] = {
+        ...v,
+        [field]: field === "talle" ? String(value).toUpperCase() : Number(value) || 0
+      };
+      return { ...b, variantesPorTalles: arr };
     }));
-    setNuevoTalle("");
   };
-
-  const eliminarTalle = (talle: string) => {
-    setForm((prev) => ({
-      ...prev,
-      variantesPorTalle: prev.variantesPorTalle.filter((v) => v.talle !== talle),
+  const removeTalleFrom = (colegio: string, idx: number) => {
+    setBloques(prev => prev.map(b => {
+      if (b.colegio !== colegio) return b;
+      const arr = b.variantesPorTalles.slice();
+      arr.splice(idx, 1);
+      return { ...b, variantesPorTalles: arr };
     }));
   };
 
-  const handleVarianteChange = (talle: string, field: "cantidad" | "precio", value: number) => {
-    setForm((prev) => ({
-      ...prev,
-      variantesPorTalle: prev.variantesPorTalle.map((v) => (v.talle === talle ? { ...v, [field]: value } : v)),
-    }));
+  // global (legacy)
+  const addGlobalTalle = () => setGlobalTalles(v => [...v, { talle: "", cantidad: 0, precio: 0 }]);
+  const updateGlobalTalle = (idx: number, field: keyof VarianteTalle, value: string | number) => {
+    setGlobalTalles(prev => {
+      const arr = prev.slice();
+      arr[idx] = {
+        ...arr[idx],
+        [field]: field === "talle" ? String(value).toUpperCase() : Number(value) || 0
+      };
+      return arr;
+    });
   };
+  const removeGlobalTalle = (idx: number) => setGlobalTalles(prev => prev.filter((_, i) => i !== idx));
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    const formatted = name === "nombre" ? value.charAt(0).toUpperCase() + value.slice(1) : value;
-    setForm({ ...form, [name]: formatted });
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, imagen: e.target.files?.[0] ?? null });
-  };
-
+  // submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const variantesActivas = form.variantesPorTalle.filter((v) => v.cantidad > 0 && v.precio > 0);
-    const totalStock = variantesActivas.reduce((sum, v) => sum + v.cantidad, 0);
-    const minPrecio = variantesActivas.length ? Math.min(...variantesActivas.map((v) => v.precio)) : 0;
+    if (!form.nombre.trim()) {
+      await Swal.fire({ icon: "warning", title: "Falta el nombre" });
+      return;
+    }
+    if (!form.genero) {
+      await Swal.fire({ icon: "warning", title: "Seleccioná el género" });
+      return;
+    }
 
-    // Strapi ahora espera JSON array en "colegio"
-    const payload: any = {
+    let payload: any = {
       nombre: form.nombre.trim(),
       descripcion: form.descripcion.trim(),
       genero: form.genero || "unisex",
-      precio: minPrecio,
-      stock: totalStock,
-      variantesPorTalle: variantesActivas,
-      ...(colegiosSel.length ? { colegio: colegiosSel } : {}),
     };
+
+    if (colegiosSel.length > 0) {
+      // validar bloques
+      const bloquesOk = bloques.map(b => ({
+        colegio: b.colegio,
+        variantesPorTalles: (b.variantesPorTalles || [])
+          .filter(v => v.talle.trim())
+          .map(v => ({ talle: v.talle.trim().toUpperCase(), cantidad: v.cantidad || 0, precio: v.precio || 0 }))
+      })).filter(b => b.variantesPorTalles.length > 0);
+
+      if (bloquesOk.length === 0) {
+        await Swal.fire({ icon: "warning", title: "Agregá al menos un talle en algún colegio" });
+        return;
+      }
+
+      const allTalles = bloquesOk.flatMap(b => b.variantesPorTalles);
+      const preciosValidos = allTalles.filter(v => v.precio > 0).map(v => v.precio);
+      const minPrecio = preciosValidos.length ? Math.min(...preciosValidos) : 0;
+      const totalStock = allTalles.reduce((acc, v) => acc + (v.cantidad || 0), 0);
+
+      payload = {
+        ...payload,
+        precio: minPrecio,
+        stock: totalStock,
+        colegio: colegiosSel,           // legacy tags
+        variantesPorColegio: bloquesOk, // ← clave
+      };
+    } else {
+      // legacy: sin colegios
+      const variantes = globalTalles
+        .filter(v => v.talle.trim())
+        .map(v => ({ talle: v.talle.trim().toUpperCase(), cantidad: v.cantidad || 0, precio: v.precio || 0 }));
+
+      if (variantes.length === 0) {
+        await Swal.fire({ icon: "warning", title: "Agregá al menos un talle" });
+        return;
+      }
+
+      const preciosValidos = variantes.filter(v => v.precio > 0).map(v => v.precio);
+      const minPrecio = preciosValidos.length ? Math.min(...preciosValidos) : 0;
+      const totalStock = variantes.reduce((acc, v) => acc + (v.cantidad || 0), 0);
+
+      payload = {
+        ...payload,
+        precio: minPrecio,
+        stock: totalStock,
+        variantesPorTalle: variantes,   // legacy
+      };
+    }
 
     try {
       const res = await fetch("https://vps-4937880-x.dattaweb.com/api/productos?populate=*", {
@@ -115,56 +199,57 @@ export default function AddProductPage() {
         body: JSON.stringify({ data: payload }),
       });
       const data = await res.json();
-
       if (!res.ok) {
         console.error("❌ Error en la respuesta:", data);
-        setResultado(`Error: ${JSON.stringify(data.error)}`);
-        throw new Error(`Error HTTP ${res.status}`);
+        await Swal.fire({ icon: "error", title: "Error", text: data?.error?.message || "No se pudo guardar" });
+        return;
       }
-
       await Swal.fire({ icon: "success", title: "Producto creado", text: "Guardado correctamente" });
       router.push("/admin/products");
-    } catch (error) {
-      console.error(error);
-      Swal.fire({ icon: "error", title: "Error", text: "No se pudo guardar el producto" });
+    } catch (err) {
+      console.error(err);
+      Swal.fire({ icon: "error", title: "Error de red", text: "No se pudo guardar el producto" });
     }
   };
 
+  // precio sugerido (info)
+  const priceHint =
+    colegiosSel.length > 0
+      ? bloques.flatMap(b => b.variantesPorTalles).map(v => v.precio).filter(p => p > 0)
+      : globalTalles.map(v => v.precio).filter(p => p > 0);
+  const minPrecio = priceHint.length ? Math.min(...priceHint) : 0;
+
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
+    <div className="max-w-3xl mx-auto p-6 space-y-6">
       <h1 className="text-3xl font-bold">Agregar nuevo producto</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Datos base */}
         <div className="grid gap-2">
           <Label htmlFor="nombre">Nombre</Label>
-          <Input id="nombre" name="nombre" value={form.nombre} onChange={handleChange} required />
+          <Input id="nombre" value={form.nombre} onChange={(e)=>setForm({...form, nombre:e.target.value})} required />
         </div>
 
         <div className="grid gap-2">
           <Label htmlFor="descripcion">Descripción</Label>
-          <Textarea id="descripcion" name="descripcion" value={form.descripcion} onChange={handleChange} />
+          <Textarea id="descripcion" value={form.descripcion} onChange={(e)=>setForm({...form, descripcion:e.target.value})} />
         </div>
 
         <div className="grid gap-2">
           <Label htmlFor="genero">Género</Label>
           <select
             id="genero"
-            name="genero"
             className="border rounded px-3 py-2"
             value={form.genero}
-            onChange={(e) => setForm({ ...form, genero: e.target.value })}
+            onChange={(e)=>setForm({...form, genero:e.target.value})}
             required
           >
             <option value="">Seleccionar</option>
-            {generosUI.map((g) => (
-              <option key={g.value} value={g.value}>
-                {g.label}
-              </option>
-            ))}
+            {generosUI.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
           </select>
         </div>
 
-        {/* MULTISELECT LINDO de COLEGIOS */}
+        {/* Colegios */}
         <div className="grid gap-2">
           <Label>Colegios</Label>
           <MultiSelect
@@ -173,75 +258,144 @@ export default function AddProductPage() {
             onChange={setColegiosSel}
             placeholder="Elegí uno o más colegios…"
           />
+          <p className="text-xs text-muted-foreground">
+            Si seleccionás colegios, vas a cargar talles por cada colegio. Si no, cargás talles globales.
+          </p>
         </div>
 
-        <div className="grid gap-2">
-          <Label>Variantes por talle</Label>
+        {/* === UI NUEVA: BLOQUES por COLEGIO -> Talles === */}
+        {colegiosSel.length > 0 ? (
+          <div className="space-y-5">
+            {bloques.map((b) => (
+              <div key={b.colegio} className="rounded-xl border p-4 shadow-sm bg-white">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <School className="w-4 h-4" />
+                    {b.colegio}
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={()=>addTalleTo(b.colegio)}>
+                    <Plus className="w-4 h-4 mr-1" /> Agregar talle
+                  </Button>
+                </div>
 
-          <div className="flex gap-2 items-center">
-            <Input
-              type="text"
-              placeholder="Ej: S, M, 2, 4, etc."
-              value={nuevoTalle}
-              onChange={(e) => setNuevoTalle(e.target.value.toUpperCase())}
-              className="flex-1"
-            />
-            <Button type="button" onClick={agregarTalle}>Agregar</Button>
+                {b.variantesPorTalles.length === 0 && (
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Sin talles cargados aún. Agregá talles para este colegio.
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {b.variantesPorTalles.map((v, idx) => (
+                    <div key={`${b.colegio}-${idx}`} className="grid grid-cols-12 gap-3 items-end">
+                      <div className="col-span-3">
+                        <Label className="text-xs">Talle</Label>
+                        <Input
+                          value={v.talle}
+                          placeholder="Ej: S, M, 2, 4"
+                          onChange={(e)=>updateTalleIn(b.colegio, idx, "talle", e.target.value)}
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <Label className="text-xs">Stock</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={String(v.cantidad)}
+                          onChange={(e)=>updateTalleIn(b.colegio, idx, "cantidad", Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="col-span-4 relative">
+                        <Label className="text-xs">Precio</Label>
+                        <span className="absolute left-3 top-[34px] text-sm text-muted-foreground">$</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          className="pl-7"
+                          value={String(v.precio)}
+                          onChange={(e)=>updateTalleIn(b.colegio, idx, "precio", Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="col-span-2 flex justify-end">
+                        <Button type="button" variant="ghost" size="icon" onClick={()=>removeTalleFrom(b.colegio, idx)}>
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="text-xs text-muted-foreground">
+              Precio mínimo sugerido (a nivel producto): {minPrecio > 0 ? `$${minPrecio.toLocaleString("es-AR")}` : "-"}
+            </div>
           </div>
+        ) : (
+          // === LEGACY: Talles globales (sin colegio) ===
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Variantes por talle (global)</Label>
+              <Button type="button" size="sm" variant="outline" onClick={addGlobalTalle}>
+                <Plus className="w-4 h-4 mr-1" /> Agregar talle
+              </Button>
+            </div>
 
-          <div className="grid gap-3 mt-2">
-            {form.variantesPorTalle.map((v) => (
-              <div key={v.talle} className="grid grid-cols-6 items-center gap-3 border rounded-lg p-3 bg-gray-50">
-                <span className="col-span-1 font-medium text-sm text-gray-700">{v.talle}</span>
+            {globalTalles.length === 0 && (
+              <div className="text-xs text-muted-foreground">Agregá talles para este producto.</div>
+            )}
 
-                <div className="col-span-2">
-                  <Label className="text-xs text-gray-500">Stock</Label>
+            {globalTalles.map((v, idx) => (
+              <div key={`g-${idx}`} className="grid grid-cols-12 gap-3 items-end border rounded-lg p-3">
+                <div className="col-span-3">
+                  <Label className="text-xs">Talle</Label>
+                  <Input
+                    value={v.talle}
+                    placeholder="Ej: S, M, 2, 4"
+                    onChange={(e)=>updateGlobalTalle(idx, "talle", e.target.value)}
+                  />
+                </div>
+                <div className="col-span-3">
+                  <Label className="text-xs">Stock</Label>
                   <Input
                     type="number"
+                    min={0}
                     value={String(v.cantidad)}
-                    min={0}
-                    onChange={(e) => handleVarianteChange(v.talle, "cantidad", Number(e.target.value || 0))}
+                    onChange={(e)=>updateGlobalTalle(idx, "cantidad", Number(e.target.value))}
                   />
                 </div>
-
-                <div className="col-span-2 relative">
-                  <Label className="text-xs text-gray-500">Precio</Label>
-                  <span className="absolute left-3 top-[36px] text-sm text-muted-foreground">$</span>
+                <div className="col-span-4 relative">
+                  <Label className="text-xs">Precio</Label>
+                  <span className="absolute left-3 top-[34px] text-sm text-muted-foreground">$</span>
                   <Input
                     type="number"
-                    value={String(v.precio)}
                     min={0}
-                    onChange={(e) => handleVarianteChange(v.talle, "precio", Number(e.target.value || 0))}
                     className="pl-7"
+                    value={String(v.precio)}
+                    onChange={(e)=>updateGlobalTalle(idx, "precio", Number(e.target.value))}
                   />
                 </div>
-
-                <div className="flex items-end justify-end">
-                  <Button
-                    type="button"
-                    onClick={() => eliminarTalle(v.talle)}
-                    variant="ghost"
-                    size="icon"
-                    className="text-red-600 hover:bg-red-100"
-                  >
-                    <Trash2 className="w-4 h-4" />
+                <div className="col-span-2 flex justify-end">
+                  <Button type="button" variant="ghost" size="icon" onClick={()=>removeGlobalTalle(idx)}>
+                    <Minus className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
             ))}
-          </div>
-        </div>
 
+            <div className="text-xs text-muted-foreground">
+              Precio mínimo sugerido (a nivel producto): {minPrecio > 0 ? `$${minPrecio.toLocaleString("es-AR")}` : "-"}
+            </div>
+          </div>
+        )}
+
+        {/* Imagen (placeholder) */}
         <div className="grid gap-2">
           <Label htmlFor="imagen">Imagen (por ahora no se sube)</Label>
-          <Input id="imagen" type="file" accept="image/*" onChange={handleFileChange} />
+          <Input id="imagen" type="file" accept="image/*" onChange={(e)=>setForm({...form, imagen: e.target.files?.[0] ?? null})} />
           {form.imagen && <p className="text-sm text-muted-foreground">Imagen seleccionada: {form.imagen.name}</p>}
         </div>
 
         <Button type="submit" className="w-full">Crear producto</Button>
       </form>
-
-      {resultado && <p className="text-sm text-muted-foreground">{resultado}</p>}
     </div>
   );
 }
