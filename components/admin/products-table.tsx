@@ -37,6 +37,7 @@ export default function ProductsTable({ filtro }: Props) {
   const [detailFor, setDetailFor] = useState<any | null>(null);
 
 
+
   useEffect(() => {
     // sube al principio del documento y del componente (por si hay contenedores scrollables)
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -44,6 +45,28 @@ export default function ProductsTable({ filtro }: Props) {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [page]);
+
+  // --- NUEVOS HELPERS PARA FORMATO "por colegio" ---
+  const getNestedVariants = (product: any) => {
+    const vpc = Array.isArray(product.variantesPorColegio)
+      ? product.variantesPorColegio
+      : [];
+    // En tu API quedó "variantesPorTalles" (con s)
+    const flattened: Array<{ colegio: string; talle: string; cantidad: number; precio: number }> = [];
+    for (const c of vpc) {
+      const colegio = (c?.colegio ?? "").toString();
+      const talles = Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : [];
+      for (const v of talles) {
+        flattened.push({
+          colegio,
+          talle: v?.talle ?? "",
+          cantidad: Number(v?.cantidad ?? 0),
+          precio: Number(v?.precio ?? 0),
+        });
+      }
+    }
+    return flattened;
+  };
 
 
   const productosFiltrados = useMemo(() => {
@@ -109,27 +132,6 @@ export default function ProductsTable({ filtro }: Props) {
 
 
 
-  // --- NUEVOS HELPERS PARA FORMATO "por colegio" ---
-  const getNestedVariants = (product: any) => {
-    const vpc = Array.isArray(product.variantesPorColegio)
-      ? product.variantesPorColegio
-      : [];
-    // En tu API quedó "variantesPorTalles" (con s)
-    const flattened: Array<{ colegio: string; talle: string; cantidad: number; precio: number }> = [];
-    for (const c of vpc) {
-      const colegio = (c?.colegio ?? "").toString();
-      const talles = Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : [];
-      for (const v of talles) {
-        flattened.push({
-          colegio,
-          talle: v?.talle ?? "",
-          cantidad: Number(v?.cantidad ?? 0),
-          precio: Number(v?.precio ?? 0),
-        });
-      }
-    }
-    return flattened;
-  };
 
 
   const renderDetailTable = (product: any) => {
