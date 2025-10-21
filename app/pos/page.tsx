@@ -17,20 +17,25 @@ import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 
 
-// Reemplazá tu interface POSItem por esta:
+interface VarianteTalle { talle: string; cantidad: number; precio?: number }
+interface ColegioBlock { colegio: string; variantesPorTalles: VarianteTalle[] }
+
 interface POSItem {
   id: string;
   documentId: string;
   name: string;
   price: number;
   quantity: number;
-  size?: string; // si no está definido => pendiente de talle
+  size?: string;                 // talle
+  colegio?: string;              // NUEVO
   qr_code: string;
-  stock: number;
-  totalStock: number;
+  stock: number;                 // stock de la variante elegida
+  totalStock: number;            // stock total del producto
   pendingSize?: boolean;
-  variantes?: { talle: string; cantidad: number; precio?: number }[];
+  variantes?: VarianteTalle[];                // legacy (sin colegio)
+  variantesPorColegio?: ColegioBlock[];       // NUEVO
 }
+
 
 
 const QRScanner = dynamic(() => import("@/components/admin/qr-scanner"), { ssr: false });
@@ -41,10 +46,11 @@ export default function POSPage() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const { toast } = useToast();
   const [showModal, setShowModal] = useState(false);
-  const [variantes, setVariantes] = useState<any[]>([]);
+
+  // Modal de escaneo/selección
   const [productoActual, setProductoActual] = useState<any | null>(null);
-  const [selectedTalle, setSelectedTalle] = useState<string>("");
-  // arriba, junto con el resto de useState:
+  const [variantes, setVariantes] = useState<VarianteTalle[]>([]); // talles del colegio elegido o legacy
+  const [selectedColegio, setSelectedColegio] = useState<string>(""); // NUEVO
   const [selecciones, setSelecciones] = useState<Record<string, number>>({});
 
   // item que está editando talles en el carrito
@@ -56,30 +62,47 @@ export default function POSPage() {
   const router = useRouter();
 
 
+
+
+
   const handleScan = async (code: string) => {
     setIsScanning(false);
     try {
-      const res = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${code}&populate=*`);
+      const res = await fetch(
+        `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${code}&populate[variantesPorColegio][populate]=*&populate=variantesPorTalle`
+      );
       const data = await res.json();
-      if (!data.data.length) {
+      const item = data?.data?.[0];
+      if (!item) {
         toast({ variant: "destructive", title: "Producto no encontrado", description: `ID: ${code}` });
         return;
       }
-      const item = data.data[0];
-      const variantes = item.variantesPorTalle || [];
-      if (!variantes.length) {
-        toast({ variant: "destructive", title: "Sin stock por talle" });
+
+      const vpc: ColegioBlock[] = Array.isArray(item.variantesPorColegio) ? item.variantesPorColegio : [];
+      const legacy: VarianteTalle[] = Array.isArray(item.variantesPorTalle) ? item.variantesPorTalle : [];
+
+      setProductoActual({ ...item, totalStock: item.stock, variantesPorColegio: vpc, variantes: legacy });
+
+      if (vpc.length > 0) {
+        // flujo nuevo: arrancamos con el primer colegio
+        const first = vpc[0];
+        setSelectedColegio(first.colegio);
+        setVariantes(first.variantesPorTalles || []);
+        setSelecciones(Object.fromEntries((first.variantesPorTalles || []).map((v: any) => [v.talle, 0])));
+      } else if (legacy.length > 0) {
+        setSelectedColegio(""); // no aplica
+        setVariantes(legacy);
+        setSelecciones(Object.fromEntries(legacy.map((v: any) => [v.talle, 0])));
+      } else {
+        toast({ variant: "destructive", title: "Sin stock disponible" });
         return;
       }
-      setProductoActual({ ...item, totalStock: item.stock });
-      setVariantes(variantes);
-      // inicializamos cantidades (0) por talle
-      setSelecciones(Object.fromEntries(variantes.map((v: any) => [v.talle, 0])));
       setShowModal(true);
     } catch {
       toast({ variant: "destructive", title: "Error al escanear producto" });
     }
   };
+
 
 
   const setCantidadTalle = (talle: string, cantidad: number, stockMax: number) => {
@@ -115,45 +138,50 @@ export default function POSPage() {
 
         const price = typeof v.precio === "number" ? v.precio : (productoActual.precio ?? 0);
 
-        // buscar misma línea (mismo producto + mismo talle)
-        const existing = updated.find(i => i.qr_code === productoActual.documentId && i.size === v.talle);
-        const yaAgregado = existing ? existing.quantity : 0;
+        // clave por producto + colegio + talle
+        const same = updated.find(i =>
+          i.qr_code === productoActual.documentId &&
+          i.size === v.talle &&
+          (i.colegio ?? "") === (productoActual.variantesPorColegio?.length ? selectedColegio : "")
+        );
+        const yaAgregado = same ? same.quantity : 0;
+        const disponible = v.cantidad ?? 0;
 
-        // validar stock contra lo ya agregado
-        if (qty + yaAgregado > (v.cantidad ?? 0)) {
+        if (qty + yaAgregado > disponible) {
           toast({
             variant: "destructive",
             title: "Stock insuficiente",
-            description: `Talle ${v.talle}: pediste ${qty + yaAgregado} y hay ${v.cantidad}.`
+            description: `Talle ${v.talle}: pediste ${qty + yaAgregado} y hay ${disponible}.`
           });
           continue;
         }
 
-        if (existing) {
+        const baseItem: POSItem = {
+          id: productoActual.id.toString(),
+          documentId: productoActual.documentId,
+          name: productoActual.nombre,
+          price,
+          size: v.talle,
+          colegio: productoActual.variantesPorColegio?.length ? selectedColegio : undefined,
+          qr_code: productoActual.documentId,
+          quantity: qty,
+          stock: disponible,
+          totalStock: productoActual.totalStock || 0,
+          variantes: productoActual.variantes || [],
+          variantesPorColegio: productoActual.variantesPorColegio || [],
+        };
+
+        if (same) {
           updated = updated.map(i =>
-            i.qr_code === productoActual.documentId && i.size === v.talle
-              ? { ...i, quantity: i.quantity + qty }
-              : i
+            i === same ? { ...i, quantity: i.quantity + qty } : i
           );
         } else {
-          updated.push({
-            id: productoActual.id.toString(),
-            documentId: productoActual.documentId,
-            name: productoActual.nombre,
-            price,
-            size: v.talle,
-            qr_code: productoActual.documentId,
-            quantity: qty,
-            stock: v.cantidad,
-            totalStock: productoActual.totalStock || 0,
-            variantes: variantes.map((vx: any) => ({ talle: vx.talle, cantidad: vx.cantidad, precio: vx.precio })),
-          });
+          updated.push(baseItem);
         }
 
         agregoAlgo = true;
       }
 
-      // si agregaste algo y existía una línea “pendiente de talle”, la removemos del array ya mutado
       if (agregoAlgo && sizePickerItem?.pendingSize) {
         updated = updated.filter(p => p !== sizePickerItem);
       }
@@ -172,30 +200,37 @@ export default function POSPage() {
   };
 
 
+
   const continuarSinTalle = () => {
-    if (!productoActual || !variantes?.length) return;
-    const totalStock = variantes.reduce((s: number, v: any) => s + (v.cantidad ?? 0), 0);
+    if (!productoActual) return;
+    const totalStock =
+      (productoActual.variantesPorColegio?.length
+        ? productoActual.variantesPorColegio.flatMap((c: any) => c.variantesPorTalles || [])
+        : productoActual.variantes || []
+      ).reduce((s: number, v: any) => s + (v.cantidad ?? 0), 0);
 
     const productPendiente: POSItem = {
       id: productoActual.id.toString(),
       documentId: productoActual.documentId,
       name: productoActual.nombre,
-      // si tu precio real depende del talle, podés dejar 0 y actualizar al asignar talle
       price: productoActual.precio ?? 0,
       size: undefined,
+      colegio: undefined,
       qr_code: productoActual.documentId,
       quantity: 1,
       stock: totalStock,
       totalStock,
       pendingSize: true,
-      variantes: variantes.map((v: any) => ({ talle: v.talle, cantidad: v.cantidad, precio: v.precio })),
+      variantes: productoActual.variantes || [],
+      variantesPorColegio: productoActual.variantesPorColegio || [],
     };
 
     setCart(prev => [...prev, productPendiente]);
-    toast({ title: "Producto agregado", description: `${productPendiente.name} (talle pendiente)` });
+    toast({ title: "Producto agregado", description: `${productPendiente.name} (talle/cole pendiente)` });
     setShowModal(false);
     setSelecciones({});
   };
+
 
 
   const hasPending = cart.some(i => (i as any).pendingSize);
@@ -276,10 +311,19 @@ export default function POSPage() {
     setCartSizeSelections({});
   };
 
-  // Bloqueo en updateQuantity:
-  const updateQuantity = (id: string, size: string | undefined, amount: number) => {
+
+  const onChangeColegioEnModal = (colegio: string) => {
+    if (!productoActual?.variantesPorColegio?.length) return;
+    const block = productoActual.variantesPorColegio.find((c: any) => c.colegio === colegio);
+    setSelectedColegio(colegio);
+    const talles = block?.variantesPorTalles || [];
+    setVariantes(talles);
+    setSelecciones(Object.fromEntries(talles.map((v: any) => [v.talle, 0])));
+  };
+
+  const updateQuantity = (id: string, size: string | undefined, amount: number, colegio?: string) => {
     setCart(prev => prev.map(i => {
-      if (i.id === id && i.size === size) {
+      if (i.id === id && i.size === size && (i.colegio ?? "") === (colegio ?? "")) {
         if (!i.size) {
           toast({ variant: "destructive", title: "Elegí un talle", description: "Seleccioná un talle antes de ajustar la cantidad." });
           return i;
@@ -295,47 +339,12 @@ export default function POSPage() {
     }));
   };
 
-
-  const handleAsignarTalle = (item: POSItem, talleElegido: string) => {
-    if (!talleElegido || !item.variantes?.length) return;
-    const variante = item.variantes.find(v => v.talle === talleElegido);
-    if (!variante) {
-      toast({ variant: "destructive", title: "Talle inválido" });
-      return;
-    }
-    setCart(prev => {
-      const dup = prev.find(p => p.qr_code === item.qr_code && p.size === talleElegido && !p.pendingSize);
-      const yaAgregado = dup ? dup.quantity : 0;
-      const disponible = variante.cantidad ?? 0;
-
-      if (yaAgregado + item.quantity > disponible) {
-        toast({ variant: "destructive", title: "Stock insuficiente", description: `Solo ${disponible} unid. del talle ${talleElegido}.` });
-        return prev;
-      }
-
-      const precioFinal = typeof variante.precio === "number" ? variante.precio : item.price;
-
-      let next = [...prev];
-      if (dup) {
-        next = next.map(p =>
-          p === dup ? { ...p, quantity: p.quantity + item.quantity } : p
-        );
-        next = next.filter(p => p !== item);
-      } else {
-        next = next.map(p =>
-          p === item
-            ? { ...p, size: talleElegido, stock: disponible, price: precioFinal, pendingSize: false }
-            : p
-        );
-      }
-      toast({ title: "Talle asignado", description: `Talle ${talleElegido} aplicado.` });
-      return next;
-    });
+  const removeItem = (id: string, size: string | undefined, colegio?: string) => {
+    setCart(prev => prev.filter(i => !(i.id === id && i.size === size && (i.colegio ?? "") === (colegio ?? ""))));
   };
 
-  const removeItem = (id: string, size: string | undefined) => {
-    setCart((prev) => prev.filter((i) => !(i.id === id && i.size === size)));
-  };
+  const totalSeleccionado = Object.values(selecciones).reduce((a, b) => a + (b || 0), 0);
+
 
   const clearCart = () => setCart([]);
 
@@ -358,8 +367,72 @@ export default function POSPage() {
 
     setIsCheckingOut(true);
 
+    // helper: normaliza respuesta de Strapi (v4/v5) para tener campos planos y id numérico
+    const normalizeProducto = (raw: any) => {
+      if (!raw) return null;
+      if (raw.attributes) {
+        // estructura { id, attributes: {...} }
+        return {
+          id: raw.id, // <-- numérico real de Strapi
+          documentId: raw.documentId ?? raw.attributes.documentId,
+          precio: raw.attributes.precio,
+          variantesPorColegio: raw.attributes.variantesPorColegio ?? [],
+          variantesPorTalle: raw.attributes.variantesPorTalle ?? [],
+          stock: raw.attributes.stock,
+          nombre: raw.attributes.nombre,
+        };
+      }
+      // estructura plana (id/documentId en top-level)
+      return {
+        id: raw.id, // <-- numérico real de Strapi
+        documentId: raw.documentId,
+        precio: raw.precio,
+        variantesPorColegio: raw.variantesPorColegio ?? [],
+        variantesPorTalle: raw.variantesPorTalle ?? [],
+        stock: raw.stock,
+        nombre: raw.nombre,
+      };
+    };
+
+
+
+    // --- Helpers de depuración (modal con payload/response) ---
+    const escapeHtml = (value: any) =>
+      String(typeof value === "string" ? value : JSON.stringify(value, null, 2))
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    const showDebugModal = async (
+      title: string,
+      payload: any,
+      response: any,
+      extra?: Record<string, any>
+    ) => {
+      const html = `
+  <div style="text-align:left;max-height:70vh;overflow:auto">
+    ${extra ? `<h3 style="margin:6px 0">Contexto</h3>
+    <pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(extra)}</pre>` : ""}
+
+    <h3 style="margin:6px 0">Payload enviado</h3>
+    <pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(payload)}</pre>
+
+    <h3 style="margin:6px 0">Respuesta</h3>
+    <pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(response)}</pre>
+  </div>
+`;
+      await Swal.fire({
+        icon: "error",
+        title,
+        html,
+        width: 900,
+        confirmButtonText: "Cerrar",
+      });
+    };
+
+
     try {
-      // 2) Traemos productos una sola vez y validamos stock
+      // 2) Traemos productos una sola vez y validamos stock (soporta colegio → talles y legacy)
       const productosByDoc: Record<string, any> = {};
 
       for (const item of cart) {
@@ -374,26 +447,47 @@ export default function POSPage() {
           return;
         }
 
+        // Traer variantes anidadas
         const res = await fetch(
-          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate=*`
+          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate[variantesPorColegio][populate]=*&populate=variantesPorTalle`
         );
         const data = await res.json();
-        const producto = data?.data?.[0];
+        const raw = data?.data?.[0];
+        if (!raw) throw new Error(`Producto no encontrado: ${item.documentId}`);
 
-        if (!producto) {
-          throw new Error(`Producto no encontrado: ${item.documentId}`);
+        const producto = normalizeProducto(raw);
+        if (!producto?.id || Number.isNaN(Number(producto.id))) {
+          throw new Error(`Producto sin id (Strapi) válido: ${item.documentId}`);
         }
 
         productosByDoc[item.documentId] = producto;
 
-        const variante = producto.variantesPorTalle?.find((v: any) => v.talle === item.size);
-        const stockDisponible = variante?.cantidad ?? 0;
+        // Validación de stock por colegio+talle o legacy
+        let stockDisponible = 0;
+        if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
+          if (!item.colegio) {
+            await Swal.fire({
+              icon: "error",
+              title: "Falta seleccionar colegio",
+              text: `El producto ${item.name} requiere colegio.`,
+              confirmButtonText: "Aceptar",
+            });
+            setIsCheckingOut(false);
+            return;
+          }
+          const block = producto.variantesPorColegio.find((c: any) => c.colegio === item.colegio);
+          const varT = block?.variantesPorTalles?.find((v: any) => v.talle === item.size);
+          stockDisponible = Number(varT?.cantidad ?? 0);
+        } else {
+          const varT = (producto.variantesPorTalle || []).find((v: any) => v.talle === item.size);
+          stockDisponible = Number(varT?.cantidad ?? 0);
+        }
 
         if (item.quantity > stockDisponible) {
           await Swal.fire({
             icon: "error",
             title: "Stock insuficiente",
-            text: `El producto ${item.name} (Talle ${item.size}) tiene solo ${stockDisponible} unidad(es) disponibles.`,
+            text: `${item.name} (${item.colegio ?? "sin colegio"} • ${item.size}) tiene solo ${stockDisponible} unidad(es).`,
             confirmButtonText: "Aceptar",
           });
           setIsCheckingOut(false);
@@ -401,7 +495,7 @@ export default function POSPage() {
         }
       }
 
-      // 3) Crear orden (con logs)
+      // 3) Crear orden
       const fecha = new Date().toISOString();
       const ordenPayload = {
         data: {
@@ -414,62 +508,57 @@ export default function POSPage() {
         },
       };
 
-      console.log("📦 Orden - payload:", ordenPayload);
-
       const ordenRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-ordenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(ordenPayload),
       });
-
       const ordenJson = await ordenRes.json();
-      console.log("📦 Orden - status:", ordenRes.status, "body:", ordenJson);
-
       if (!ordenRes.ok) {
-        await Swal.fire({
-          icon: "error",
-          title: "Error creando orden",
-          html: `<pre style="text-align:left">${JSON.stringify(ordenJson, null, 2)}</pre>`,
-        });
+        await showDebugModal(
+          "Error creando orden",
+          ordenPayload,
+          ordenJson,
+          { endpoint: "POST /api/fortela-ordenes" }
+        );
         throw new Error("Error al crear la orden");
       }
+
       const ordenId: number = ordenJson.data.id;
       const ordenDocId: string = ordenJson.data.documentId;
 
-
-      // 4) Crear items + actualizar stock por talle
+      // 4) Crear items + actualizar stock por talle (colegio o legacy)
       for (const item of cart) {
-        // re-fetch del producto (como en el Shop)
-        const productoRes = await fetch(
-          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate=*`
-        );
-        const productoJson = await productoRes.json();
-        const producto = productoJson?.data?.[0];
+        const producto = productosByDoc[item.documentId];
 
-        if (!producto) {
-          throw new Error(`Producto no encontrado: ${item.documentId}`);
+        // Precio por talla (respeta precio de la variante si existe)
+        let precioVariante = Number(item.price ?? 0);
+        if (!precioVariante) {
+          if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
+            const block = producto.variantesPorColegio.find((c: any) => c.colegio === item.colegio);
+            precioVariante = Number(
+              block?.variantesPorTalles?.find((v: any) => v.talle === item.size)?.precio ?? producto?.precio ?? 0
+            );
+          } else {
+            precioVariante = Number(
+              (producto.variantesPorTalle || []).find((v: any) => v.talle === item.size)?.precio ?? producto?.precio ?? 0
+            );
+          }
         }
 
-        const productoId = Number(producto.id);
-
-
-        // ...tenés "producto" de Strapi ya con variantesPorTalle y el item del cart...
-        const precioVariante =
-          Number(item.price ??                      // precio que ya mostrás en el cart (debería venir por talle)
-            producto?.variantesPorTalle?.find((v: any) => v.talle === item.size)?.precio ??
-            producto?.precio ?? 0);
-
-
-
-        // 4.1) crear ítem con ids numéricos (sin connect)
+        // 4.1) crear ítem (agregar colegio si existe)
         const itemPayload = {
           data: {
             cantidad: Number(item.quantity),
-            talle: item.size,                                  // string
-            precio_unitario: precioVariante,                 // << GUARDA el precio por talle
-            importe: precioVariante * Number(item.quantity), // << GUARDA el subtotal de la línea
-            fortela_producto: Number(productoId),              // número plano
-            fortela_orden: Number(ordenId),                    // número plano
+            talle: String(item.size),
+            ...(item.colegio ? { colegio: String(item.colegio) } : {}), // ⬅️ NUEVO
+
+            precio_unitario: Number(precioVariante),
+            importe: Number(precioVariante) * Number(item.quantity),
+
+            // Relaciones por documentId (Strapi v5)
+            fortela_producto: { connect: [{ documentId: producto.documentId }] },
+            fortela_orden: { connect: [{ documentId: ordenDocId }] },
           },
         };
 
@@ -484,70 +573,132 @@ export default function POSPage() {
         );
         const itemJson = await itemRes.json();
         if (!itemRes.ok) {
-          console.error("🧾 Error item:", itemJson);
-          throw new Error(`Error al crear item de orden para ${item.name}`);
+          // Logs a consola igualmente
+          console.error("🧾 Error ítem (payload):", JSON.stringify(itemPayload, null, 2));
+          console.error("🧾 Error ítem (Strapi):", itemJson?.error || itemJson);
+
+          await showDebugModal(
+            `Error al crear ítem: ${item.name}`,
+            itemPayload,
+            itemJson,
+            {
+              endpoint: "POST /api/fortela-items-comprados",
+              productoIdConectado: Number(producto.id),
+              ordenIdConectado: Number(ordenId),
+              itemDocumentId: item.documentId,
+              itemColegio: item.colegio ?? null,
+              itemTalle: item.size ?? null,
+              itemCantidad: Number(item.quantity),
+            }
+          );
+
+          throw new Error(
+            `Error al crear item de orden para ${item.name} → ${itemJson?.error?.message ?? "ver modal"}`
+          );
         }
 
-        // 4.2) actualizar stock por talle
-        const nuevasVariantes = (producto.variantesPorTalle || []).map((v: any) => ({
-          talle: v.talle,
-          cantidad: v.talle === item.size ? Math.max(0, (v.cantidad ?? 0) - item.quantity) : v.cantidad,
-          precio: v.precio,
-        }));
 
-        const nuevoStockTotal = nuevasVariantes.reduce(
-          (sum: number, v: any) => sum + (v.cantidad ?? 0),
-          0
-        );
+        // 4.2) actualizar stock en el producto
+        let dataPut: any = {};
+
+        if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
+          const nuevasVpc = producto.variantesPorColegio.map((c: any) => {
+            if (c.colegio !== item.colegio) {
+              // copiar tal cual
+              return {
+                colegio: c.colegio,
+                variantesPorTalles: (c.variantesPorTalles || []).map((v: any) => ({
+                  talle: v.talle,
+                  cantidad: Number(v.cantidad ?? 0),
+                  precio: v.precio,
+                })),
+              };
+            }
+            // descontar en el talle elegido
+            return {
+              colegio: c.colegio,
+              variantesPorTalles: (c.variantesPorTalles || []).map((v: any) => ({
+                talle: v.talle,
+                cantidad:
+                  v.talle === item.size
+                    ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
+                    : Number(v.cantidad ?? 0),
+                precio: v.precio,
+              })),
+            };
+          });
+
+          const nuevoTotal = nuevasVpc
+            .flatMap((c: any) => c.variantesPorTalles)
+            .reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
+
+          dataPut = { variantesPorColegio: nuevasVpc, stock: nuevoTotal };
+        } else {
+          const nuevasVpt = (producto.variantesPorTalle || []).map((v: any) => ({
+            talle: v.talle,
+            cantidad:
+              v.talle === item.size
+                ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
+                : Number(v.cantidad ?? 0),
+            precio: v.precio,
+          }));
+          const nuevoTotal = nuevasVpt.reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
+          dataPut = { variantesPorTalle: nuevasVpt, stock: nuevoTotal };
+        }
 
         const putRes = await fetch(
-          `https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}?populate=*`,
+          `https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`,
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              data: {
-                variantesPorTalle: nuevasVariantes,
-                stock: nuevoStockTotal,
-              },
-            }),
+            body: JSON.stringify({ data: dataPut }),
           }
         );
         const putJson = await putRes.json();
         if (!putRes.ok) {
-          console.error("📉 Error PUT stock:", putJson);
+          console.error("📉 Error PUT stock (request):", { data: dataPut });
+          console.error("📉 Error PUT stock (response):", putJson);
+
+          await showDebugModal(
+            `Error al actualizar stock de ${item.name}`,
+            { data: dataPut },
+            putJson,
+            {
+              endpoint: `PUT /api/productos/${item.documentId} (por documentId)`,
+              colegio: item.colegio ?? null,
+              talle: item.size ?? null,
+              cantidadVendida: Number(item.quantity),
+            }
+          );
+
           throw new Error(`Error al actualizar stock de ${item.name}`);
         }
+
       }
 
-
-
-      // ----- GUARDAMOS DATOS PARA EL TICKET DEL POS -----
+      // 5) Guardar datos de ticket (agrego colegio para claridad)
       const itemsForTicket = cart.map((i) => ({
         descripcion: i.name,
-        talle: i.size!,                       // ya validaste que no haya pendientes
+        colegio: i.colegio ?? null, // opcional en ticket
+        talle: i.size!, // ya validado
         cantidad: Number(i.quantity),
-        precio: Number(i.price),              // precio por talle que venías usando
+        precio: Number(i.price),
         importe: Number(i.price) * Number(i.quantity),
       }));
 
-      // Guardamos en sessionStorage para leerlos en /pos/venta-completada
       if (typeof window !== "undefined") {
         sessionStorage.setItem("posTicketItems", JSON.stringify(itemsForTicket));
         sessionStorage.setItem(
           "posTicketMeta",
           JSON.stringify({
-            ordenId: ordenDocId || String(ordenId),  // usamos documentId
+            ordenId: ordenDocId || String(ordenId),
             total,
           })
         );
       }
 
-
-
-
-      // 4.3) ✅ NUEVO FLUJO: SweetAlert de éxito y redirección a pantalla de confirmación
-      clearCart(); // limpiamos antes de salir
+      // 6) Éxito
+      clearCart();
       await Swal.fire({
         icon: "success",
         title: "¡Venta creada correctamente!",
@@ -556,10 +707,8 @@ export default function POSPage() {
         showConfirmButton: false,
       });
 
-      // Redirigimos a la pantalla con las 2 opciones (volver + imprimir ticket)
       const url = `/pos/venta-completada?ordenId=${encodeURIComponent(ordenDocId)}&total=${encodeURIComponent(total)}`;
       window.location.assign(url);
-
     } catch (error) {
       console.error("❌ Checkout error:", error);
       toast({
@@ -571,6 +720,7 @@ export default function POSPage() {
       setIsCheckingOut(false);
     }
   };
+
 
 
 
@@ -603,12 +753,12 @@ export default function POSPage() {
                       {/* DONDE renderizás cada item del carrito */}
                       <POSCartItem
                         item={item as any}
-                        onIncrement={() => updateQuantity(item.id, item.size, 1)}
-                        onDecrement={() => updateQuantity(item.id, item.size, -1)}
-                        onRemove={() => removeItem(item.id, item.size)}
-                        // onChangeSize={(newSize) => handleAsignarTalle(item as any, newSize)}  // <- QUITALO si no querés cambios individuales
-                        inlineSizeSelector={false} // <- NUEVO: oculta el select inline
+                        onIncrement={() => updateQuantity(item.id, item.size, 1, item.colegio)}
+                        onDecrement={() => updateQuantity(item.id, item.size, -1, item.colegio)}
+                        onRemove={() => removeItem(item.id, item.size, item.colegio)}
+                        inlineSizeSelector={false}
                       />
+
 
 
                       {/* Botón para abrir el selector múltiple de talles */}
@@ -722,6 +872,24 @@ export default function POSPage() {
           <DialogHeader>
             <DialogTitle>Seleccioná talles y cantidades</DialogTitle>
           </DialogHeader>
+
+
+
+          {productoActual?.variantesPorColegio?.length ? (
+            <div className="mb-3">
+              <label className="text-sm text-muted-foreground mb-1 block">Colegio</label>
+              <select
+                className="border rounded-md px-2 py-1 bg-background text-sm w-full"
+                value={selectedColegio}
+                onChange={(e) => onChangeColegioEnModal(e.target.value)}
+              >
+                {productoActual.variantesPorColegio.map((c: any) => (
+                  <option key={c.colegio} value={c.colegio}>{c.colegio}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
 
           <div className="space-y-3 max-h-[60vh] overflow-auto pr-1">
             {variantes.map((v: any) => {

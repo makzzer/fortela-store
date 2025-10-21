@@ -16,9 +16,10 @@ interface ItemRow {
   id: number;
   cantidad: number;
   talle: string;
+  colegio: string;        // 👈 ahora lo traemos del ítem
   nombre: string;
   descripcion: string;
-  precioUnit: number; // unitario (por talle)
+  precioUnit: number;
 }
 
 interface Props {
@@ -42,7 +43,7 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
     if (!open) return;
     setLoading(true);
 
-    // Ítems de la orden, con variantes por talle
+    // Ítems de la orden (por documentId), con producto y variantes por talle
     const url = new URL(
       "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados"
     );
@@ -66,10 +67,10 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
         const mapped: ItemRow[] = (json.data as any[]).map((item) => {
           const cantidad = Number(item.cantidad ?? 0);
           const talle: string = item.talle ?? "-";
+          const colegio: string = item.colegio ?? "-";   // 👈 toma el colegio guardado en el ítem
 
           const producto = item.fortela_producto ?? {};
-          const variantes: VariantePorTalle[] =
-            producto?.variantesPorTalle ?? [];
+          const variantes: VariantePorTalle[] = producto?.variantesPorTalle ?? [];
 
           // 1) Preferir precio guardado en el ítem
           let precioUnit: number | undefined =
@@ -94,6 +95,7 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
             id: item.id,
             cantidad,
             talle,
+            colegio,                                    // 👈 incluir en la fila
             nombre: producto?.nombre || "Producto",
             descripcion: producto?.descripcion || "",
             precioUnit,
@@ -148,6 +150,7 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
                   <tr>
                     <th className="text-left p-3">Producto</th>
                     <th className="text-left p-3">Descripción</th>
+                    <th className="text-left p-3">Colegio</th>
                     <th className="text-center p-3">Talle</th>
                     <th className="text-center p-3">Cantidad</th>
                     <th className="text-right p-3">Precio unit.</th>
@@ -157,9 +160,8 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
                   {rows.map((r) => (
                     <tr key={r.id} className="border-b last:border-0">
                       <td className="p-3">{r.nombre}</td>
-                      <td className="p-3 text-muted-foreground">
-                        {r.descripcion}
-                      </td>
+                      <td className="p-3 text-muted-foreground">{r.descripcion}</td>
+                      <td className="p-3">{r.colegio}</td>
                       <td className="p-3 text-center">
                         <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-1 text-xs font-medium">
                           {r.talle}
@@ -175,9 +177,8 @@ export default function OrderDetailsModal({ documentId, children }: Props) {
                       </td>
                     </tr>
                   ))}
-                  {/* Fila final: TOTAL */}
                   <tr className="bg-muted/40 font-semibold">
-                    <td className="p-3 text-right" colSpan={4}>
+                    <td className="p-3 text-right" colSpan={5}>
                       Total
                     </td>
                     <td className="p-3 text-right text-base">{money(total)}</td>

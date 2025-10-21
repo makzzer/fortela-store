@@ -1,4 +1,3 @@
-// context/OrdenContext.tsx
 "use client";
 
 import { createContext, useContext, useState, ReactNode } from "react";
@@ -7,7 +6,7 @@ interface Producto {
   id: number;
   nombre: string;
   precio: number;
-  descripcion?: string; // ahora opcional
+  descripcion?: string; // opcional
   talle?: string;
 }
 
@@ -37,13 +36,8 @@ const OrdenContext = createContext<OrdenContextType | undefined>(undefined);
 export const ItemOrdenProvider = ({ children }: { children: ReactNode }) => {
   const [orden, setOrdenState] = useState<OrdenCompleta | null>(null);
 
-  const setOrden = (ordenData: OrdenCompleta) => {
-    setOrdenState(ordenData);
-  };
-
-  const clearOrden = () => {
-    setOrdenState(null);
-  };
+  const setOrden = (ordenData: OrdenCompleta) => setOrdenState(ordenData);
+  const clearOrden = () => setOrdenState(null);
 
   return (
     <OrdenContext.Provider value={{ orden, setOrden, clearOrden }}>
@@ -54,6 +48,7 @@ export const ItemOrdenProvider = ({ children }: { children: ReactNode }) => {
 
 export const useItemOrden = () => {
   const context = useContext(OrdenContext);
-  if (!context) throw new Error("useOrden must be used within an OrdenItemProvider");
+  if (!context)
+    throw new Error("useItemOrden debe usarse dentro de un <ItemOrdenProvider>");
   return context;
 };
