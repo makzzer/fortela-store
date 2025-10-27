@@ -118,11 +118,23 @@ export default function POSPage() {
   };
 
   const openSizePicker = (item: POSItem) => {
+    // ⬇️ si el item tiene colegio, tomar los talles de ese colegio;
+    // si no, usar legacy variantes
+    let talles: VarianteTalle[] = [];
+    if (item.variantesPorColegio?.length && item.colegio) {
+      talles = item.variantesPorColegio.find(c => c.colegio === item.colegio)?.variantesPorTalles || [];
+    } else {
+      talles = item.variantes || [];
+    }
+
     const base: Record<string, number> = {};
-    (item.variantes ?? []).forEach(v => { base[v.talle] = 0; });
+    talles.forEach(v => { base[v.talle] = 0; });
+
     setCartSizeSelections(base);
-    setSizePickerItem(item);
+    // ⬇️ asegurar que el picker reciba los talles correctos
+    setSizePickerItem({ ...item, variantes: talles });
   };
+
 
 
   const confirmarSelecciones = () => {
@@ -183,8 +195,17 @@ export default function POSPage() {
       }
 
       if (agregoAlgo && sizePickerItem?.pendingSize) {
-        updated = updated.filter(p => p !== sizePickerItem);
+        updated = updated.filter(p =>
+          !(
+            p.qr_code === (sizePickerItem as POSItem).qr_code &&
+            (p.colegio ?? "") === ((sizePickerItem as POSItem).colegio ?? "") &&
+            !p.size && p.pendingSize
+          )
+        );
       }
+
+
+
 
       return updated;
     });
@@ -203,11 +224,19 @@ export default function POSPage() {
 
   const continuarSinTalle = () => {
     if (!productoActual) return;
+
+    // total de stock sumando todas las variantes
     const totalStock =
       (productoActual.variantesPorColegio?.length
         ? productoActual.variantesPorColegio.flatMap((c: any) => c.variantesPorTalles || [])
         : productoActual.variantes || []
       ).reduce((s: number, v: any) => s + (v.cantidad ?? 0), 0);
+
+    // ⬇️ talles a guardar dentro del item (colegio → talles, o legacy)
+    const tallesParaItem: VarianteTalle[] =
+      productoActual.variantesPorColegio?.length
+        ? (productoActual.variantesPorColegio.find((c: any) => c.colegio === selectedColegio)?.variantesPorTalles || [])
+        : (productoActual.variantes || []);
 
     const productPendiente: POSItem = {
       id: productoActual.id.toString(),
@@ -215,13 +244,13 @@ export default function POSPage() {
       name: productoActual.nombre,
       price: productoActual.precio ?? 0,
       size: undefined,
-      colegio: undefined,
+      colegio: productoActual.variantesPorColegio?.length ? selectedColegio : undefined, // ✅ colegio guardado
       qr_code: productoActual.documentId,
       quantity: 1,
       stock: totalStock,
       totalStock,
       pendingSize: true,
-      variantes: productoActual.variantes || [],
+      variantes: tallesParaItem,                       // ✅ talles del colegio seleccionado
       variantesPorColegio: productoActual.variantesPorColegio || [],
     };
 
@@ -230,6 +259,8 @@ export default function POSPage() {
     setShowModal(false);
     setSelecciones({});
   };
+
+
 
 
 
@@ -257,54 +288,93 @@ export default function POSPage() {
 
       for (const v of variantes) {
         const qty = cartSizeSelections[v.talle] ?? 0;
-        if (qty <= 0) continue;
+        if (qty < 0) continue;
 
-        const existing = updated.find(i => i.qr_code === sizePickerItem.qr_code && i.size === v.talle);
-        const yaAgregado = existing ? existing.quantity : 0;
-        const disponible = v.cantidad ?? 0;
+        const existingIdx = updated.findIndex(i =>
+          i.qr_code === sizePickerItem.qr_code &&
+          i.size === v.talle &&
+          (i.colegio ?? "") === (sizePickerItem.colegio ?? "")
+        );
 
-        if (qty + yaAgregado > disponible) {
-          toast({ variant: "destructive", title: "Stock insuficiente", description: `Talle ${v.talle}: pediste ${qty + yaAgregado} y hay ${disponible}.` });
-          continue;
+        const disponible = Number(v.cantidad ?? 0);
+        const esMismoTalleQueEdito = !!sizePickerItem.size && v.talle === sizePickerItem.size;
+
+        if (qty > 0) {
+          if (qty > disponible) {
+            toast({
+              variant: "destructive",
+              title: "Stock insuficiente",
+              description: `Talle ${v.talle}: pediste ${qty} y hay ${disponible}.`
+            });
+            continue;
+          }
+
+          const price = typeof v.precio === "number" ? v.precio : sizePickerItem.price;
+
+          if (existingIdx >= 0) {
+            // Reemplazo/seteo cantidad y aseguro conservar colegio y variantes para que siga el botón
+            updated[existingIdx] = {
+              ...updated[existingIdx],
+              quantity: esMismoTalleQueEdito ? qty : (updated[existingIdx].quantity + qty),
+              price,
+              colegio: sizePickerItem.colegio ?? updated[existingIdx].colegio,
+              variantesPorColegio: sizePickerItem.variantesPorColegio || updated[existingIdx].variantesPorColegio || [],
+              variantes: sizePickerItem.variantes || updated[existingIdx].variantes || [],
+            };
+          } else {
+            // Nueva línea: incluir colegio y variantes para habilitar “Elegir / cambiar talles”
+            updated.push({
+              id: sizePickerItem.id,
+              documentId: sizePickerItem.documentId,
+              name: sizePickerItem.name,
+              price,
+              size: v.talle,
+              colegio: sizePickerItem.colegio,                               // ✅ colegio
+              qr_code: sizePickerItem.qr_code,
+              quantity: qty,
+              stock: disponible,
+              totalStock: sizePickerItem.totalStock,
+              variantesPorColegio: sizePickerItem.variantesPorColegio || [],  // ✅ deja el botón activo
+              variantes: sizePickerItem.variantes || [],                      // (en legacy sirve esto)
+            } as POSItem);
+          }
+
+          agregoAlgo = true;
         }
-
-        const price = typeof v.precio === "number" ? v.precio : sizePickerItem.price;
-
-        if (existing) {
-          updated = updated.map(i =>
-            i.qr_code === sizePickerItem.qr_code && i.size === v.talle
-              ? { ...i, quantity: i.quantity + qty }
-              : i
-          );
-        } else {
-          updated.push({
-            id: sizePickerItem.id,
-            documentId: sizePickerItem.documentId,
-            name: sizePickerItem.name,
-            price,
-            size: v.talle,
-            qr_code: sizePickerItem.qr_code,
-            quantity: qty,
-            stock: disponible,
-            totalStock: sizePickerItem.totalStock,
-          } as POSItem);
-        }
-
-        agregoAlgo = true;
       }
 
-      // si se agregaron talles, eliminar la línea pendiente
+      // Si venía de línea PENDIENTE → borrarla por claves
       if (agregoAlgo && sizePickerItem?.pendingSize) {
-        updated = updated.filter(p => p !== sizePickerItem);
+        updated = updated.filter(p =>
+          !(
+            p.qr_code === sizePickerItem.qr_code &&
+            (p.colegio ?? "") === (sizePickerItem.colegio ?? "") &&
+            !p.size && p.pendingSize
+          )
+        );
+      }
+
+      // Si edité una línea con talle y la dejé en 0 → eliminar original
+      if (sizePickerItem?.size) {
+        const qtyOriginal = cartSizeSelections[sizePickerItem.size] ?? 0;
+        if (qtyOriginal === 0) {
+          updated = updated.filter(p =>
+            !(
+              p.qr_code === sizePickerItem.qr_code &&
+              (p.colegio ?? "") === (sizePickerItem.colegio ?? "") &&
+              p.size === sizePickerItem.size
+            )
+          );
+        }
       }
 
       return updated;
     });
 
     if (agregoAlgo) {
-      toast({ title: "Talles agregados", description: "Se añadieron al carrito." });
+      toast({ title: "Talles aplicados", description: "Se actualizó el carrito." });
     } else {
-      toast({ variant: "destructive", title: "Sin cambios", description: "No se agregó ningún talle." });
+      toast({ variant: "destructive", title: "Sin cambios", description: "No seleccionaste cantidades." });
     }
 
     setSizePickerItem(null);
@@ -632,6 +702,13 @@ export default function POSPage() {
             .flatMap((c: any) => c.variantesPorTalles)
             .reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
 
+          // ✅ Actualizar cache local antes del PUT (evita pisar descuentos previos del mismo producto)
+          productosByDoc[item.documentId] = {
+            ...producto,
+            variantesPorColegio: nuevasVpc,
+            stock: nuevoTotal,
+          };
+
           dataPut = { variantesPorColegio: nuevasVpc, stock: nuevoTotal };
         } else {
           const nuevasVpt = (producto.variantesPorTalle || []).map((v: any) => ({
@@ -642,7 +719,16 @@ export default function POSPage() {
                 : Number(v.cantidad ?? 0),
             precio: v.precio,
           }));
+
           const nuevoTotal = nuevasVpt.reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
+
+          // ✅ Actualizar cache local antes del PUT (evita pisar descuentos previos del mismo producto)
+          productosByDoc[item.documentId] = {
+            ...producto,
+            variantesPorTalle: nuevasVpt,
+            stock: nuevoTotal,
+          };
+
           dataPut = { variantesPorTalle: nuevasVpt, stock: nuevoTotal };
         }
 
@@ -673,6 +759,7 @@ export default function POSPage() {
 
           throw new Error(`Error al actualizar stock de ${item.name}`);
         }
+
 
       }
 
@@ -762,13 +849,14 @@ export default function POSPage() {
 
 
                       {/* Botón para abrir el selector múltiple de talles */}
-                      {item.variantes?.length ? (
+                      {(item.variantes?.length || (item.variantesPorColegio?.length && item.colegio)) ? (
                         <div className="flex justify-start pl-2">
                           <Button variant="outline" size="sm" onClick={() => openSizePicker(item)}>
-                            Elegir talles
+                            Elegir / cambiar talles
                           </Button>
                         </div>
                       ) : null}
+
 
                     </div>
                   ))}

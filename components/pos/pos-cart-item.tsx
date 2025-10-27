@@ -70,12 +70,34 @@ export default function POSCartItem({
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{item.name}</div>
 
+
         {/* Colegio + Talle (estado) */}
-        <div className="text-xs text-muted-foreground">
-          {hasColegio && (item.colegio ? `Colegio: ${item.colegio}` : "Colegio: (pendiente)")}
-          {(!hasColegio && item.size) && `Talle: ${item.size}`}
-          {(!hasColegio && !item.size && hasLegacy) && "Talle: (pendiente)"}
+        <div className="text-xs text-gray-500 dark:text-gray-400">
+          {hasColegio && (
+            <>
+              {item.colegio ? (
+                <>
+                  Colegio: {item.colegio}
+                  {item.size ? ` • Talle: ${item.size}` : " • Talle: (pendiente)"}
+                </>
+              ) : (
+                "Colegio: (pendiente)"
+              )}
+            </>
+          )}
+
+          {!hasColegio && (
+            <>
+              {item.size
+                ? `Talle: ${item.size}`
+                : hasLegacy
+                  ? "Talle: (pendiente)"
+                  : null}
+            </>
+          )}
         </div>
+
+
 
         {/* Selectores */}
         {showSelectors && (
