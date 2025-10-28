@@ -15,37 +15,28 @@ export default function VentaCompletadaClient() {
   const [loading, setLoading] = useState(false);
 
   const volverAlPOS = () => router.push("/pos");
-
+  
   async function imprimirTicket() {
     try {
       setLoading(true);
 
-      // 1) Leemos lo que guardó el POS antes de redirigir
       const meta = JSON.parse(sessionStorage.getItem("posTicketMeta") || "{}");
       const items = JSON.parse(sessionStorage.getItem("posTicketItems") || "[]");
 
-      // 2) armamos el payload:
-      //    - si tenemos items en memoria => los mandamos y NO pasamos ordenId (evita carrera con Strapi)
-      //    - si no hay items => mandamos ordenId para que el route los busque
-      const ordenIdForRoute: string | undefined = meta?.ordenId || ordenId || undefined;
+      // Recuperar datos base
+      const ordenIdForRoute = meta?.ordenId || ordenId || undefined;
       const total = Number(meta?.total ?? totalFromQuery) || 0;
 
-      const payload: any = {
+      // ✅ Estructura igual a orders-table.tsx
+      const payload = {
         numero: ordenIdForRoute ? `ORD-${ordenIdForRoute}` : undefined,
+        fecha: new Date().toLocaleDateString(),
+        cliente: meta?.cliente || "Consumidor Final",
+        ordenId: ordenIdForRoute,
         total,
+        items: Array.isArray(items) && items.length > 0 ? items : undefined,
       };
 
-      if (Array.isArray(items) && items.length > 0) {
-        payload.items = items;                // ⬅ prioridad: lo que vendiste recién
-      } else if (ordenIdForRoute) {
-        payload.ordenId = ordenIdForRoute;    // ⬅ fallback: que el backend busque en Strapi
-      } else {
-        alert("No se encontraron datos para el ticket.");
-        setLoading(false);
-        return;
-      }
-
-      // 3) usamos el route que ya te funciona
       const res = await fetch("/api/ticket-cambio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -68,6 +59,7 @@ export default function VentaCompletadaClient() {
       setLoading(false);
     }
   }
+
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4">
