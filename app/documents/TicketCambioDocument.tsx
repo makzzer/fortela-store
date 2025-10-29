@@ -5,6 +5,7 @@ export type TicketItem = {
   descripcion: string;
   talle?: string;
   cantidad: number;
+  colegio?: string;
   precio: number;
   importe?: number;
 };
@@ -189,6 +190,7 @@ export default function TicketCambioDocument({
               <tr>
                 <th style={{ width: "12%" }}>Cantidad</th>
                 <th>Descripción</th>
+                <th>Colegio</th>
                 <th style={{ width: "14%" }}>Talle</th>
                 <th className="right" style={{ width: "16%" }}>P. Unit</th>
                 <th className="right" style={{ width: "16%" }}>Importe</th>
@@ -199,6 +201,7 @@ export default function TicketCambioDocument({
                 <tr key={`${it.sku}-${idx}`}>
                   <td className="mono center">{it.cantidad}</td>
                   <td className="mono">{it.descripcion}</td>
+                  <td className="mono">{it.colegio||"no vino pa"}</td>
                   <td className="mono center">{it.talle || "-"}</td>
                   <td className="mono right">${it.precio.toFixed(2)}</td>
                   <td className="mono right">${(it.precio * it.cantidad).toFixed(2)}</td>
