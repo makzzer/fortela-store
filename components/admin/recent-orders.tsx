@@ -1,5 +1,9 @@
-'use client'
+"use client";
 
+import { useEffect, useState } from "react";
+import { Eye, FileText } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -7,95 +11,122 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Eye } from 'lucide-react'
-import { useEffect, useState } from 'react'
+} from "@/components/ui/table";
+import OrderDetailsModal from "@/components/admin/OrderDetailsModal";
 
 interface Order {
-  id: number
-  total: number
-  date: string
-  status: string
-  tipo_venta: string
-  documentId: string
+  id: number;
+  total: number;
+  date: string;
+  tipo_venta: string;
+  documentId: string;
 }
 
 export default function RecentOrders() {
-  const [orders, setOrders] = useState<Order[]>([])
+  const [orders, setOrders] = useState<Order[]>([]);
 
   useEffect(() => {
-    const fetchOrders = async () => {
+    const fetchRecent = async () => {
+      // 🔹 Strapi v4: sort + paginado para traer SOLO 5 más recientes
       const res = await fetch(
-        'https://vps-4937880-x.dattaweb.com/api/fortela-ordenes?populate=fortela_cliente',
-        {
-          cache: 'no-store',
-        }
-      )
-      const data = await res.json()
-      const formatted = data.data.map((order: any) => ({
+        "https://vps-4937880-x.dattaweb.com/api/fortela-ordenes?populate=fortela_cliente&sort=fecha:desc&pagination[page]=1&pagination[pageSize]=5",
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+
+      const formatted: Order[] = (data?.data ?? []).map((order: any) => ({
         id: order.id,
         documentId: order.documentId,
-        total: order.total,
+        total: Number(order.total ?? 0),
         date: new Date(order.fecha).toLocaleDateString(),
-        status: order.estado,
-        tipo_venta: order.tipo_venta,
-      }))
-      setOrders(formatted.slice(0, 5)) // ✅ máximo 5
-    }
+        tipo_venta: order.tipo_venta ?? "online",
+      }));
 
-    fetchOrders()
-  }, [])
+      setOrders(formatted);
+    };
 
-  const getBadgeClass = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'procesando':
-        return 'bg-yellow-100 text-yellow-800 border border-yellow-200'
-      case 'pagado':
-        return 'bg-green-100 text-green-800 border border-green-200'
-      case 'enviado':
-        return 'bg-blue-100 text-blue-800 border border-blue-200'
-      case 'finalizado':
-        return 'bg-gray-100 text-gray-800 border border-gray-200'
-      case 'cancelado':
-        return 'bg-red-100 text-red-800 border border-red-200'
-      default:
-        return 'bg-gray-100 text-gray-800 border border-gray-200'
+    fetchRecent();
+  }, []);
+
+  const verTicketPDF = async (order: Order) => {
+    const newTab = window.open("", "_blank");
+    try {
+      const res = await fetch("/api/ticket-cambio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          numero: `ORD-${order.id}`,
+          fecha: order.date,
+          cliente: "Consumidor Final",
+          ordenId: order.documentId,
+          total: order.total,
+        }),
+      });
+
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(msg || "No se pudo generar el PDF");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (newTab) newTab.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      console.error(e);
+      if (newTab) newTab.close();
+      alert("Error al generar el ticket. Probá de nuevo.");
     }
-  }
+  };
 
   return (
-    <>
-      {/* 🖥️ Desktop Table */}
-      <div className="hidden sm:block overflow-x-auto">
-        <Table className="min-w-[600px] text-sm">
+    <div className="w-full overflow-x-hidden">
+      {/* Desktop / Tablet */}
+      <div className="hidden sm:block">
+        <Table className="min-w-full table-auto">
           <TableHeader>
             <TableRow>
               <TableHead>Order ID</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Total</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
+
           <TableBody>
-            {orders.slice(0,6).map((order) => (
+            {orders.map((order) => (
               <TableRow key={order.id}>
-                <TableCell className="font-medium">{order.documentId}</TableCell>
-                <TableCell>{order.date}</TableCell>
-                <TableCell>${order.total.toFixed(2)}</TableCell>
-                <TableCell>
-                  <span
-                    className={`text-xs px-2 py-[2px] rounded-full border ${getBadgeClass(order.status)}`}
-                  >
-                    {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                  </span>
+                <TableCell className="font-medium whitespace-nowrap">
+                  ORD-{order.id}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">{order.date}</TableCell>
+                <TableCell className="whitespace-nowrap">
+                  ${order.total.toFixed(2)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <Badge variant="secondary">{order.tipo_venta}</Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button variant="ghost" size="icon">
-                    <Eye className="h-4 w-4" />
-                    <span className="sr-only">View order {order.id}</span>
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <OrderDetailsModal documentId={order.documentId}>
+                      <Button variant="ghost" size="icon" title="Ver detalles">
+                        <Eye className="h-4 w-4" />
+                        <span className="sr-only">Ver detalles</span>
+                      </Button>
+                    </OrderDetailsModal>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Ver ticket de cambio (PDF)"
+                      onClick={() => verTicketPDF(order)}
+                    >
+                      <FileText className="h-4 w-4" />
+                      <span className="sr-only">Ver ticket de cambio</span>
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -103,37 +134,44 @@ export default function RecentOrders() {
         </Table>
       </div>
 
-      {/* 📱 Mobile Cards */}
-      <div className="block sm:hidden space-y-3">
+      {/* Mobile (cards) */}
+      <div className="grid gap-4 sm:hidden mt-4 px-4">
         {orders.map((order) => (
           <div
             key={order.id}
-            className="border rounded-md p-4 bg-background shadow-sm"
+            className="border rounded-2xl p-4 shadow-sm bg-white flex flex-col gap-3"
           >
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs text-muted-foreground">Order ID</span>
-              <span className="text-sm font-medium">{order.documentId}</span>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-base">ORD-{order.id}</h3>
             </div>
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs text-muted-foreground">Date</span>
-              <span className="text-sm">{order.date}</span>
+
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>Fecha: {order.date}</p>
+              <p>Total: ${order.total.toFixed(2)}</p>
+              <p className="capitalize">Tipo: {order.tipo_venta}</p>
             </div>
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs text-muted-foreground">Total</span>
-              <span className="text-sm">${order.total.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-muted-foreground">Status</span>
-              <span
-                className={`text-xs px-2 py-[2px] rounded-full border ${getBadgeClass(order.status)}`}
+
+            <div className="flex gap-2 mt-1">
+              <OrderDetailsModal documentId={order.documentId}>
+                <Button variant="ghost" size="icon" title="Ver detalles">
+                  <Eye className="w-5 h-5" />
+                  <span className="sr-only">Ver detalles</span>
+                </Button>
+              </OrderDetailsModal>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Ver ticket de cambio (PDF)"
+                onClick={() => verTicketPDF(order)}
               >
-                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-              </span>
+                <FileText className="w-5 h-5" />
+                <span className="sr-only">Ver ticket de cambio</span>
+              </Button>
             </div>
           </div>
         ))}
       </div>
-    </>
-  )
-
+    </div>
+  );
 }
