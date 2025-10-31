@@ -1,7 +1,7 @@
 // app/api/ticket-pos/route.ts  (o el route que uses en POS)
 // Si tu proyecto ya usa /api/ticket-cambio, podés pegar esto allí.
 
-import "server-only";
+//import "server-only";
 import { NextRequest } from "next/server";
 import React from "react";
 import chromium from "@sparticuz/chromium";

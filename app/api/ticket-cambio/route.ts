@@ -1,5 +1,5 @@
 // app/api/ticket-cambio/route.ts
-import "server-only";
+//import "server-only";
 
 import { NextRequest } from "next/server";
 import React from "react";
@@ -55,7 +55,7 @@ async function fetchItemsByOrdenId(ordenId: string): Promise<
   const mapped = items.map((it) => {
     const cantidad = Number(it?.cantidad ?? 1);
     const talle = it?.talle;
-
+    const colegio: string = it.colegio ?? "-"; 
     const precioVariante = it?.fortela_producto?.variantesPorTalle?.find(
       (v: any) => v?.talle === talle
     )?.precio;
@@ -82,6 +82,7 @@ async function fetchItemsByOrdenId(ordenId: string): Promise<
       cantidad,
       precio: precioUnit,
       importe,
+      colegio,
     };
 
     return row;
