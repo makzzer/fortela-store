@@ -55,7 +55,7 @@ async function fetchItemsByOrdenId(ordenId: string): Promise<
   const mapped = items.map((it) => {
     const cantidad = Number(it?.cantidad ?? 1);
     const talle = it?.talle;
-    const colegio: string = it.colegio ?? "-"; 
+    const colegio: string = it.colegio?? "-"; 
     const precioVariante = it?.fortela_producto?.variantesPorTalle?.find(
       (v: any) => v?.talle === talle
     )?.precio;

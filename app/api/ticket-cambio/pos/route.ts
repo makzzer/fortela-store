@@ -46,6 +46,7 @@ async function fetchItemsFromStrapi(ordenId: string) {
 function mapToTicketItem(it: any): TicketItem & { importe?: number } {
   const cantidad = Number(it?.cantidad ?? 1);
   const talle = it?.talle;
+  const colegio = it?.colegio;
 
   const variantePrice = it?.fortela_producto?.variantesPorTalle?.find(
     (v: any) => v?.talle === talle
@@ -55,8 +56,8 @@ function mapToTicketItem(it: any): TicketItem & { importe?: number } {
     typeof it?.precio_unitario === "number"
       ? Number(it.precio_unitario)
       : typeof variantePrice === "number"
-      ? Number(variantePrice)
-      : Number(it?.fortela_producto?.precio ?? it?.precio ?? 0);
+        ? Number(variantePrice)
+        : Number(it?.fortela_producto?.precio ?? it?.precio ?? 0);
 
   const importe =
     typeof it?.importe === "number" ? Number(it.importe) : precio * cantidad;
@@ -68,6 +69,7 @@ function mapToTicketItem(it: any): TicketItem & { importe?: number } {
     cantidad,
     precio,
     importe,
+    colegio,
   };
 }
 

@@ -139,7 +139,7 @@ export default function TicketCambioDocument({
                 <span className="lbl">Fecha:</span>{fecha}
               </div>
               <div className="meta mono">
-                {ordenId && (<><span className="lbl">Orden:</span>{ordenId} · </>)}
+                {ordenId && (<><span className="lbl">Orden:</span>{ordenId.slice(0,5)} · </>)}
                 <span className="lbl">N°:</span>{numero}
               </div>
             </div>
