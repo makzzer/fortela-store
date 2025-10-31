@@ -139,8 +139,11 @@ export default function TicketCambioDocument({
                 <span className="lbl">Fecha:</span>{fecha}
               </div>
               <div className="meta mono">
-                {ordenId && (<><span className="lbl">Orden:</span>{ordenId.slice(0,5)} · </>)}
-                <span className="lbl">N°:</span>{numero.slice(0,5)}
+                {ordenId && (<><span className="lbl">Orden:</span>{ordenId.slice(0, 5)} · </>)}
+                <span className="lbl">
+                  N°: {numero.length > 10 ? numero.slice(0, 5) : numero}
+                </span>
+
               </div>
             </div>
           </div>
@@ -201,7 +204,7 @@ export default function TicketCambioDocument({
                 <tr key={`${it.sku}-${idx}`}>
                   <td className="mono center">{it.cantidad}</td>
                   <td className="mono">{it.descripcion}</td>
-                  <td className="mono">{it.colegio||"no vino pa"}</td>
+                  <td className="mono">{it.colegio || "no vino pa"}</td>
                   <td className="mono center">{it.talle || "-"}</td>
                   <td className="mono right">${it.precio.toFixed(2)}</td>
                   <td className="mono right">${(it.precio * it.cantidad).toFixed(2)}</td>
