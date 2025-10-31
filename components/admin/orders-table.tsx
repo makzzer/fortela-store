@@ -56,7 +56,8 @@ export default function OrdersTable({ filtro }: Props) {
   const filtroLc = filtro.toLowerCase().trim();
   const ordenesFiltradas = useMemo(() => {
     if (!filtroLc) return orders;
-    return orders.filter((o) => `ORD-${o.id}`.toLowerCase().includes(filtroLc));
+    return orders.filter((o) => `ORD-${o.id}`.toLowerCase().includes(filtroLc) ||
+      o.documentId.toLowerCase().includes(filtroLc));
   }, [orders, filtroLc]);
 
   // Paginación
@@ -157,7 +158,7 @@ export default function OrdersTable({ filtro }: Props) {
                   ORD-{order.id}
                 </TableCell>
                 <TableCell className="font-medium whitespace-nowrap">
-                  {order.documentId.slice(0,5)}
+                  {order.documentId.slice(0, 5)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap">{order.date}</TableCell>
                 <TableCell className="whitespace-nowrap">
@@ -201,6 +202,11 @@ export default function OrdersTable({ filtro }: Props) {
           >
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-base">ORD-{order.id}</h3>
+            </div>
+
+            <div className="flex items-center">
+              <h6 className="text-base">ID Compra:</h6>
+              <h6 className="text-base ms-2">{order.documentId.slice(0, 5)}</h6>
             </div>
 
             <div className="text-sm text-muted-foreground space-y-1">
