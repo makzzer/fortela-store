@@ -114,7 +114,7 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
     }
 
     fetchAll().catch((err) => console.error("Error cargando productos", err))
-  }, [])
+  }, [productos])
 
   return <ProductosContext.Provider value={productos}>{children}</ProductosContext.Provider>
 }
