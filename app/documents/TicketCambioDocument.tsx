@@ -140,7 +140,7 @@ export default function TicketCambioDocument({
               </div>
               <div className="meta mono">
                 {ordenId && (<><span className="lbl">Orden:</span>{ordenId.slice(0,5)} · </>)}
-                <span className="lbl">N°:</span>{numero}
+                <span className="lbl">N°:</span>{numero.slice(0,5)}
               </div>
             </div>
           </div>
