@@ -142,6 +142,7 @@ export default function OrdersTable({ filtro }: Props) {
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead>
+              <TableHead>ID Compra</TableHead>
               <TableHead>Fecha</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Tipo</TableHead>
@@ -154,6 +155,9 @@ export default function OrdersTable({ filtro }: Props) {
               <TableRow key={order.id}>
                 <TableCell className="font-medium whitespace-nowrap">
                   ORD-{order.id}
+                </TableCell>
+                <TableCell className="font-medium whitespace-nowrap">
+                  {order.documentId.slice(0,5)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap">{order.date}</TableCell>
                 <TableCell className="whitespace-nowrap">

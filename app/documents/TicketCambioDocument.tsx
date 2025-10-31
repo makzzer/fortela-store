@@ -141,7 +141,7 @@ export default function TicketCambioDocument({
               <div className="meta mono">
                 {ordenId && (<><span className="lbl">Orden:</span>{ordenId.slice(0, 5)} · </>)}
                 <span className="lbl">
-                  N°: {numero.length > 10 ? numero.slice(0, 5) : numero}
+                  N°: {numero.length >= 4 ? numero : numero.slice(0, 5)}
                 </span>
 
               </div>
