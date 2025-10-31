@@ -139,13 +139,15 @@ export default function ProductsTable({ filtro }: Props) {
     if (!vpc.length) return null;
 
     return (
-      <div className="mt-2 space-y-4">
+      <div className="mt-2 ms-2 space-y-4">
         {vpc.map((c: any, i: number) => (
           <div key={i} className="border rounded-lg overflow-hidden">
             <div className="px-4 py-2 font-semibold bg-muted text-sm">
               {c?.colegio || "Sin colegio"}
             </div>
-            <div className="max-h-64 overflow-auto">
+
+            {/* sin max-h ni overflow acá; el scroll es del DialogContent */}
+            <div>
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-background">
                   <tr className="text-left">
@@ -161,8 +163,12 @@ export default function ProductsTable({ filtro }: Props) {
                     return (
                       <tr key={v?.id ?? `${i}-${j}`} className="border-t">
                         <td className="px-4 py-2 capitalize">{v?.talle ?? "-"}</td>
-                        <td className="px-4 py-2">{isNaN(price) ? "-" : `$${price.toLocaleString("es-AR")}`}</td>
-                        <td className={`px-4 py-2 text-right ${qty <= 10 ? "text-red-700 font-semibold" : ""}`}>{qty} u.</td>
+                        <td className="px-4 py-2">
+                          {isNaN(price) ? "-" : `$${price.toLocaleString("es-AR")}`}
+                        </td>
+                        <td className={`px-4 py-2 text-right ${qty <= 10 ? "text-red-700 font-semibold" : ""}`}>
+                          {qty} u.
+                        </td>
                       </tr>
                     );
                   })}
@@ -174,6 +180,7 @@ export default function ProductsTable({ filtro }: Props) {
       </div>
     );
   };
+
 
 
   // Construye lineas compactas para el preview en tabla (desktop y mobile)
@@ -397,8 +404,8 @@ export default function ProductsTable({ filtro }: Props) {
 
                     {/* DIALOG DETALLE POR COLEGIO/TALLE */}
                     <Dialog open={!!detailFor} onOpenChange={(o) => !o && setDetailFor(null)}>
-                      <DialogContent className="sm:max-w-2xl">
-                        <DialogHeader>
+                      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto p-0">
+                        <DialogHeader className="mt-2 ms-2">
                           <DialogTitle>Detalle de stock</DialogTitle>
                           <DialogDescription className="truncate">
                             {detailFor?.nombre}
@@ -406,7 +413,7 @@ export default function ProductsTable({ filtro }: Props) {
                         </DialogHeader>
                         {detailFor && (
                           <div>
-                            <div className="flex items-center justify-between text-sm mb-2">
+                            <div className="flex items-center ms-2 me-2 justify-between text-sm mb-2">
                               <span className="text-muted-foreground">
                                 {Array.isArray(detailFor?.variantesPorColegio) ? detailFor.variantesPorColegio.length : 0} colegio(s)
                               </span>

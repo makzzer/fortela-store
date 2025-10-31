@@ -51,14 +51,15 @@ export default function AdminDashboard() {
 
         <DashboardCard title="Ordenes" value="156" description="24 pendientes" href="/admin/orders" icon={<ShoppingBag className="h-5 w-5" />} />
 
+
         <DashboardCard
           title="Clientes"
           value="1500"
           //description="+18 this week"
-          description="In development.."
+          description="In Development.."
           icon={<Users className="h-5 w-5" />}
         />
-
+ 
       </div>
 
 
