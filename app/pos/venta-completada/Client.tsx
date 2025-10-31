@@ -67,7 +67,7 @@ export default function VentaCompletadaClient() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">Venta creada</h1>
           {/* ordenId es string: lo mostramos tal cual */}
-          <span className="text-sm text-gray-500">{ordenId ? `ORD-${ordenId}` : "ORD"}</span>
+          <span className="text-sm text-gray-500">{ordenId.slice(0,5) ? `ORD-${ordenId.slice(0,5)}` : "ORD"}</span>
         </div>
 
         <p className="mt-2 text-gray-600">
