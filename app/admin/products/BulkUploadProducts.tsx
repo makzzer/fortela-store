@@ -14,9 +14,9 @@ type ExcelRow = {
   tipo_uniforme?: string;        // "formal" | "deportivo"
   nivel_educativo?: string;      // "jardin,primaria,secundaria"
   etiqueta?: string;             // códigos colegio: "SMA,JHE,AGE,..."
-  productos_talle?: string;      // "3,4,5,6" o "S,M,L,XL"
-  productos_precio?: string;     // "16000,18000,20000,22000"
-  productos_cantidad?: string;   // "0,0,0,0" (opcional)
+  productos_talle?: string;      // "4,6,8,10,12,14,S,M,L"
+  productos_precio?: string;     // "10000,11500,13000,14500,16000,17500,19000,20500,22000"
+  productos_cantidad?: string;   // ignorado: dejamos stock 0
 };
 
 const API_URL = "https://vps-4937880-x.dattaweb.com/api/productos?populate=*";
@@ -104,45 +104,46 @@ export default function BulkUploadProducts() {
           continue;
         }
 
+        // Parseo de talles y precios
         const talles = splitCSV(r.productos_talle);
         const precios = splitNumCSV(r.productos_precio);
-        const cantidades = splitNumCSV(r.productos_cantidad);
 
         if (talles.length === 0) {
           warnings.push(`Fila ${fila} (${r.nombre}): sin "productos_talle".`);
         }
         if (precios.length === 0) {
-          warnings.push(`Fila ${fila} (${r.nombre}): sin "productos_precio". Precio base=0.`);
+          warnings.push(`Fila ${fila} (${r.nombre}): sin "productos_precio". Se usarán 0s.`);
         }
         if (talles.length !== precios.length) {
-          warnings.push(`Fila ${fila} (${r.nombre}): talles (${talles.length}) ≠ precios (${precios.length}). Se alineó.`);
+          warnings.push(`Fila ${fila} (${r.nombre}): talles (${talles.length}) ≠ precios (${precios.length}). Se alinea con el último valor.`);
         }
 
-        const maxLen = Math.max(talles.length, precios.length, cantidades.length || 0);
+        // Alinear longitudes (se repite el último valor si faltan)
+        const maxLen = Math.max(talles.length, precios.length);
         while (talles.length < maxLen) talles.push(talles[talles.length - 1] ?? "");
         while (precios.length < maxLen) precios.push(precios[precios.length - 1] ?? 0);
-        while (cantidades.length < maxLen) cantidades.push(0);
 
-        const variantesPorTalle: Array<{ talle: string; precio: number; cantidad: number }> = [];
-        for (let j = 0; j < maxLen; j++) {
-          const talle = String(talles[j] ?? "").trim();
-          if (!talle) continue;
-          variantesPorTalle.push({
-            talle,
-            precio: Number(precios[j] ?? 0),
-            cantidad: Number(cantidades[j] ?? 0),
-          });
-        }
-
-        const precio = variantesPorTalle.length
-          ? Math.min(...variantesPorTalle.map(v => v.precio || 0))
-          : 0;
-        const stock = variantesPorTalle.reduce((acc, v) => acc + (Number.isFinite(v.cantidad) ? v.cantidad : 0), 0);
-
+        // Códigos -> nombres de colegio
         const codes = splitCSV(r.etiqueta);
+        const colegiosNombres = codes.map(c => codeToName[c.toUpperCase()] ?? c).filter(Boolean);
         const unknown = codes.filter(c => !codeToName[c.toUpperCase()]);
-        if (unknown.length) warnings.push(`Fila ${fila} (${r.nombre}): códigos sin glosario: ${unknown.join(", ")}.`);
-        const colegios = codes.map(c => codeToName[c.toUpperCase()]).filter(Boolean);
+        if (unknown.length) warnings.push(`Fila ${fila} (${r.nombre}): códigos sin glosario (se usó el código como nombre): ${unknown.join(", ")}.`);
+
+        // 🧱 variantesPorColegio: para cada colegio, todas las combinaciones talle-precio con stock 0
+        const variantesPorColegio: Array<{
+          colegio: string;
+          variantesPorTalles: Array<{ talle: string; precio: number; cantidad: number }>;
+        }> = colegiosNombres.map((col) => ({
+          colegio: col,
+          variantesPorTalles: talles.map((t, idx) => ({
+            talle: String(t),
+            precio: Number(precios[idx] ?? 0),
+            cantidad: 0, // stock inicial 0
+          })),
+        }));
+
+        // precio base (mínimo de la fila) y stock total (0)
+        const precioBase = precios.length ? Math.min(...precios) : 0;
 
         const payload = {
           nombre: cap(r.nombre) || "(Sin nombre)",
@@ -150,10 +151,11 @@ export default function BulkUploadProducts() {
           genero: (r.genero || "unisex").toString().trim().toLowerCase(),
           tipo_uniforme: r.tipo_uniforme || null,
           nivel_educativo: r.nivel_educativo ? splitCSV(r.nivel_educativo) : null,
-          precio,
-          stock,
-          variantesPorTalle,
-          colegio: colegios.length ? colegios : null,
+          precio: precioBase,
+          stock: 0, // todos en 0, lo vas a cargar a mano
+          colegio: colegiosNombres.length ? colegiosNombres : null, // por compatibilidad
+          variantesPorColegio, // 👈 estructura pedida
+          // NOTA: NO enviamos variantesPorTalle para no duplicar lógica
         };
 
         try {
@@ -209,7 +211,7 @@ export default function BulkUploadProducts() {
       try {
         router.refresh();          // App Router
       } catch {
-        window.location.reload();  // Fallback por si el contexto no se reactualiza
+        window.location.reload();  // Fallback
       }
     }
   };
@@ -224,7 +226,6 @@ export default function BulkUploadProducts() {
         onChange={handleFile}
       />
 
-      {/* Botón responsive: solo ícono en xs, texto desde sm */}
       <Button
         type="button"
         onClick={openPicker}
