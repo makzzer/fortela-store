@@ -1,7 +1,7 @@
 'use client'
 
 import type React from "react"
-import { useEffect, Suspense } from "react"
+import { useEffect, Suspense, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import RecentOrders from "@/components/admin/recent-orders"
 import StockAlerts from "@/components/admin/stock-alerts"
@@ -12,25 +12,131 @@ import { TabsTrigger, TabsContent, TabsList, Tabs } from "@radix-ui/react-tabs"
 import SalesChart from "@/components/admin/sales-chart"
 import Link from "next/link"
 
+const STRAPI_BASE_URL = "https://vps-4937880-x.dattaweb.com"
+
 export default function AdminDashboard() {
   const { totalSales, isLoading } = useDashboardData()
 
-  // CSS helper para eliminar scroll horizontal
+  // 👉 Estado para la card de productos
+  const [totalProducts, setTotalProducts] = useState<number | null>(null)
+  const [lowStockCount, setLowStockCount] = useState<number | null>(null)
+  const [isProductsLoading, setIsProductsLoading] = useState<boolean>(true)
+
+  // 👉 Estado para la card de órdenes
+  const [totalOrders, setTotalOrders] = useState<number | null>(null)
+  const [openOrdersCount, setOpenOrdersCount] = useState<number | null>(null)
+  const [isOrdersLoading, setIsOrdersLoading] = useState<boolean>(true)
+
+  // 👉 Fetch de productos para la card (total + low stock)
   useEffect(() => {
-    const style = document.createElement('style')
-    style.innerHTML = `
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
+    const controller = new AbortController()
+
+    const fetchProductsInfo = async () => {
+      try {
+        setIsProductsLoading(true)
+
+        const res = await fetch(
+          `${STRAPI_BASE_URL}/api/productos?pagination[pageSize]=1000`,
+          { signal: controller.signal }
+        )
+
+        if (!res.ok) {
+          console.error("Error HTTP al obtener productos:", res.status)
+          setTotalProducts(0)
+          setLowStockCount(0)
+          return
+        }
+
+        const json = await res.json()
+
+        const data = Array.isArray(json.data) ? json.data : []
+        const total =
+          json?.meta?.pagination?.total != null
+            ? Number(json.meta.pagination.total)
+            : data.length
+
+        const lowStock = data.reduce((acc: number, item: any) => {
+          const attrs = item.attributes ?? item
+          const stock = Number(attrs.stock ?? 0)
+          if (!Number.isNaN(stock) && stock < 10) {
+            return acc + 1
+          }
+          return acc
+        }, 0)
+
+        setTotalProducts(total)
+        setLowStockCount(lowStock)
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
+        console.error("Error cargando info de productos:", err)
+        setTotalProducts(0)
+        setLowStockCount(0)
+      } finally {
+        setIsProductsLoading(false)
       }
-      .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-      }
-    `
-    document.head.appendChild(style)
-    return () => {
-      document.head.removeChild(style)
     }
+
+    fetchProductsInfo()
+
+    return () => controller.abort()
+  }, [])
+
+  // 👉 Fetch de órdenes para la card (total + abiertas)
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const fetchOrdersInfo = async () => {
+      try {
+        setIsOrdersLoading(true)
+
+        const res = await fetch(
+          `${STRAPI_BASE_URL}/API/fortela-ordenes?pagination[pageSize]=1000`,
+          { signal: controller.signal }
+        )
+
+        if (!res.ok) {
+          console.error("Error HTTP al obtener órdenes:", res.status)
+          setTotalOrders(0)
+          setOpenOrdersCount(0)
+          return
+        }
+
+        const json = await res.json()
+
+        const data = Array.isArray(json.data) ? json.data : []
+        const total =
+          json?.meta?.pagination?.total != null
+            ? Number(json.meta.pagination.total)
+            : data.length
+
+        const abiertas = data.reduce((acc: number, item: any) => {
+          const attrs = item.attributes ?? item
+          const estadoRaw = attrs.estado ?? item.estado ?? ""
+          const estado =
+            typeof estadoRaw === "string" ? estadoRaw.toLowerCase() : ""
+
+          // Consideramos "pendiente" o "procesando" como órdenes abiertas
+          if (estado === "procesando" || estado === "pendiente") {
+            return acc + 1
+          }
+          return acc
+        }, 0)
+
+        setTotalOrders(total)
+        setOpenOrdersCount(abiertas)
+      } catch (err: any) {
+        if (err?.name === "AbortError") return
+        console.error("Error cargando info de órdenes:", err)
+        setTotalOrders(0)
+        setOpenOrdersCount(0)
+      } finally {
+        setIsOrdersLoading(false)
+      }
+    }
+
+    fetchOrdersInfo()
+
+    return () => controller.abort()
   }, [])
 
   return (
@@ -44,83 +150,55 @@ export default function AdminDashboard() {
           value={isLoading ? "Cargando..." : `$${totalSales.toFixed(2)}`}
           description="In development..."
           icon={<DollarSign className="h-5 w-5" />}
-          href="/admin/orders" // ✅ Aquí agregás el link
+          href="/admin/orders"
         />
 
-        <DashboardCard title="Productos" value="87" description="12 low stock" href="/admin/products" icon={<Package className="h-5 w-5" />} />
+        {/* ✅ Card de productos dinámica */}
+        <DashboardCard
+          title="Productos"
+          value={
+            isProductsLoading
+              ? "Cargando..."
+              : `${totalProducts ?? 0}`
+          }
+          description={
+            isProductsLoading
+              ? "Calculando stock..."
+              : lowStockCount && lowStockCount > 0
+              ? `${lowStockCount} con stock bajo`
+              : "Sin productos con stock bajo 🎉"
+          }
+          href="/admin/products"
+          icon={<Package className="h-5 w-5" />}
+        />
 
-        <DashboardCard title="Ordenes" value="156" description="24 pendientes" href="/admin/orders" icon={<ShoppingBag className="h-5 w-5" />} />
+        {/* ✅ Card de órdenes dinámica */}
+        <DashboardCard
+          title="Ordenes"
+          value={
+            isOrdersLoading
+              ? "Cargando..."
+              : `${totalOrders ?? 0}`
+          }
+          description={
+            isOrdersLoading
+              ? "Calculando órdenes..."
+              : openOrdersCount && openOrdersCount > 0
+              ? `${openOrdersCount} en proceso`
+              : "Sin órdenes pendientes 🎉"
+          }
+          href="/admin/orders"
+          icon={<ShoppingBag className="h-5 w-5" />}
+        />
 
-
+        {/* Por ahora Clients sigue como placeholder */}
         <DashboardCard
           title="Clientes"
           value="1500"
-          //description="+18 this week"
-          description="In Development.."
+          description="Proximamente..."
           icon={<Users className="h-5 w-5" />}
         />
- 
       </div>
-
-
-      {/*
-      <Tabs defaultValue="overview" className="mb-8 w-full">
-        <TabsList className="flex w-full overflow-x-auto whitespace-nowrap rounded-md border p-1 no-scrollbar">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          <TabsTrigger value="reports">Reports</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Sales Overview</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-6">
-                <Suspense fallback={<Skeleton className="h-80 w-full" />}>
-                  <SalesChart />
-                </Suspense>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Stock Alerts</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-6">
-                <StockAlerts />
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="analytics" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Analytics</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <p>Detailed analytics content would go here.</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="reports" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Reports</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <p>Reports and exports would go here.</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-  */}
-
-
 
       <Card className="mb-6">
         <CardHeader>
@@ -133,7 +211,6 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-
       <Card className="mt-4 sm:mt-6">
         <CardHeader>
           <CardTitle>Órdenes Recientes</CardTitle>
@@ -144,17 +221,9 @@ export default function AdminDashboard() {
           </Suspense>
         </CardContent>
       </Card>
-
-
-
-
-
-
     </div>
   )
 }
-
-
 
 function DashboardCard({
   title,
@@ -177,7 +246,9 @@ function DashboardCard({
           {icon}
         </div>
       </div>
-      <div className="text-xl sm:text-2xl font-bold mb-1 break-words">{value}</div>
+      <div className="text-xl sm:text-2xl font-bold mb-1 break-words">
+        {value}
+      </div>
       <div className="text-sm text-muted-foreground">{description}</div>
     </CardContent>
   )
@@ -194,7 +265,6 @@ function DashboardCard({
     </Card>
   )
 }
-
 
 function StockAlertsSkeleton() {
   return (
