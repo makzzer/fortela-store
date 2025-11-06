@@ -47,7 +47,7 @@ export default function OrdersTable({ filtro }: Props) {
         date: new Date(order.fecha).toLocaleDateString(),
         tipo_venta: order.tipo_venta ?? "online",
       }));
-      setOrders(formatted);
+      setOrders(formatted.reverse());
     };
     fetchOrders();
   }, []);
