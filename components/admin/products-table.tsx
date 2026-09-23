@@ -8,12 +8,17 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, QrCode, Eye, ChevronLeft, ChevronRight } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Edit, QrCode, Eye, ChevronLeft, ChevronRight, Trash2, AlertTriangle } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { useProductos } from "@/app/context/ProductosContext";
 import StockDetailPopover from "@/components/admin/stock-detail-popover";
 import { buildProductQRData } from "@/app/lib/qr";
+
+const STRAPI_URL = process.env.NEXT_PUBLIC_STRAPI_URL ?? "https://vps-4937880-x.dattaweb.com";
+const STRAPI_TOKEN = process.env.NEXT_PUBLIC_STRAPI_TOKEN ?? "";
 
 interface Props {
   filtro: string;
@@ -30,28 +35,28 @@ export default function ProductsTable({ filtro }: Props) {
   const productos = useProductos();
   const [qrFor, setQrFor] = useState<{ id: string; value: string; nombre: string } | null>(null);
 
-  const [page, setPage] = useState(1); // 1-indexed
+  const [page, setPage] = useState(1);
   const topRef = useRef<HTMLDivElement | null>(null);
   const filtroLc = filtro.toLowerCase().trim();
 
   const [detailFor, setDetailFor] = useState<any | null>(null);
 
-
+  // ── Delete state ──────────────────────────────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<{ documentId: string; nombre: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Lista local de documentIds eliminados (para ocultar sin esperar refresh del contexto)
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // sube al principio del documento y del componente (por si hay contenedores scrollables)
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [page]);
 
-  // --- NUEVOS HELPERS PARA FORMATO "por colegio" ---
   const getNestedVariants = (product: any) => {
-    const vpc = Array.isArray(product.variantesPorColegio)
-      ? product.variantesPorColegio
-      : [];
-    // En tu API quedó "variantesPorTalles" (con s)
+    const vpc = Array.isArray(product.variantesPorColegio) ? product.variantesPorColegio : [];
     const flattened: Array<{ colegio: string; talle: string; cantidad: number; precio: number }> = [];
     for (const c of vpc) {
       const colegio = (c?.colegio ?? "").toString();
@@ -68,15 +73,16 @@ export default function ProductsTable({ filtro }: Props) {
     return flattened;
   };
 
-
   const productosFiltrados = useMemo(() => {
-    if (!filtroLc) return productos;
-    return productos.filter((p) => {
-      const nested = getNestedVariants(p); // ← nuevo
+    const base = productos.filter((p) => !deletedIds.has(p.documentId));
+    if (!filtroLc) return base;
+    return base.filter((p) => {
+      const nested = getNestedVariants(p);
       const nestedText = nested
         .map((x) => `${x.colegio} ${x.talle} ${x.precio} ${x.cantidad}`)
         .join(" ");
-      const legacyTalles = p.variantesPorTalle?.map((v: any) => `${v.talle} ${v.precio} ${v.cantidad}`).join(" ") ?? "";
+      const legacyTalles =
+        p.variantesPorTalle?.map((v: any) => `${v.talle} ${v.precio} ${v.cantidad}`).join(" ") ?? "";
 
       const hay = [
         p.nombre,
@@ -85,24 +91,18 @@ export default function ProductsTable({ filtro }: Props) {
         Array.isArray(p.colegio) ? p.colegio.join(" ") : p.colegio,
         Array.isArray(p.nivel_educativo) ? p.nivel_educativo.join(" ") : p.nivel_educativo,
         legacyTalles,
-        nestedText, // ← incluye colegios/talles del nuevo esquema
+        nestedText,
       ]
         .map(normalize)
         .join(" ");
 
       return hay.includes(filtroLc);
     });
-  }, [productos, filtroLc]);
+  }, [productos, filtroLc, deletedIds]);
 
-
-  // --- PAGINACIÓN ---
   const pageCount = Math.max(1, Math.ceil(productosFiltrados.length / PAGE_SIZE));
-  useEffect(() => {
-    // si cambia el filtro o el total, volvemos a la primera página
-    setPage(1);
-  }, [filtroLc]);
 
-  // clamp por si el filtro achica la cantidad de páginas
+  useEffect(() => { setPage(1); }, [filtroLc]);
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
@@ -114,12 +114,10 @@ export default function ProductsTable({ filtro }: Props) {
   const showingFrom = productosFiltrados.length ? startIdx + 1 : 0;
   const showingTo = Math.min(endIdx, productosFiltrados.length);
 
-  // Números de página (con elipsis cuando hay muchas)
   const pageNumbers = useMemo(() => {
     const nums: (number | string)[] = [];
-    const delta = 2; // páginas a cada lado
+    const delta = 2;
     let l: number | undefined;
-
     for (let i = 1; i <= pageCount; i++) {
       if (i === 1 || i === pageCount || (i >= page - delta && i <= page + delta)) {
         if (l && i - l > 1) nums.push(i - l === 2 ? l + 1 : "…");
@@ -130,14 +128,38 @@ export default function ProductsTable({ filtro }: Props) {
     return nums;
   }, [page, pageCount]);
 
-
-
-
+  // ── Delete handler ────────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(
+        `${STRAPI_URL}/api/productos/${deleteTarget.documentId}`,
+        {
+          method: "DELETE",
+          headers: {
+            ...(STRAPI_TOKEN ? { Authorization: `Bearer ${STRAPI_TOKEN}` } : {}),
+          },
+        }
+      );
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Error ${res.status}: ${body}`);
+      }
+      // Ocultar inmediatamente sin esperar que el contexto se refresque
+      setDeletedIds((prev) => new Set([...prev, deleteTarget.documentId]));
+      setDeleteTarget(null);
+    } catch (err: any) {
+      setDeleteError(err?.message ?? "Error desconocido al eliminar");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const renderDetailTable = (product: any) => {
     const vpc = Array.isArray(product?.variantesPorColegio) ? product.variantesPorColegio : [];
     if (!vpc.length) return null;
-
     return (
       <div className="mt-2 ms-2 space-y-4">
         {vpc.map((c: any, i: number) => (
@@ -145,19 +167,17 @@ export default function ProductsTable({ filtro }: Props) {
             <div className="px-4 py-2 font-semibold bg-muted text-sm">
               {c?.colegio || "Sin colegio"}
             </div>
-
-            {/* sin max-h ni overflow acá; el scroll es del DialogContent */}
-            <div>
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-background">
-                  <tr className="text-left">
-                    <th className="px-4 py-2 w-1/3">Talle</th>
-                    <th className="px-4 py-2 w-1/3">Precio</th>
-                    <th className="px-4 py-2 w-1/3 text-right">Stock</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : []).map((v: any, j: number) => {
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-background">
+                <tr className="text-left">
+                  <th className="px-4 py-2 w-1/3">Talle</th>
+                  <th className="px-4 py-2 w-1/3">Precio</th>
+                  <th className="px-4 py-2 w-1/3 text-right">Stock</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : []).map(
+                  (v: any, j: number) => {
                     const qty = Number(v?.cantidad ?? 0);
                     const price = Number(v?.precio ?? 0);
                     return (
@@ -171,143 +191,173 @@ export default function ProductsTable({ filtro }: Props) {
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                  }
+                )}
+              </tbody>
+            </table>
           </div>
         ))}
       </div>
     );
   };
 
-
-
-  // Construye lineas compactas para el preview en tabla (desktop y mobile)
-  const buildColegioPreviewLines = (product: any) => {
-    const vpc = Array.isArray(product.variantesPorColegio)
-      ? product.variantesPorColegio
-      : [];
-    // armamos: "San Marcelo: S $2300 • 20u · L $5400 • 200u"
-    return vpc.map((c: any) => {
-      const colegio = (c?.colegio ?? "").toString();
-      const talles = (Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : [])
-        .map((v: any) => {
-          const qty = Number(v?.cantidad ?? 0);
-          const price = Number(v?.precio ?? 0);
-          const priceStr = isNaN(price) ? "-" : `$${price.toLocaleString("es-AR")}`;
-          return `${v?.talle ?? "-"} ${priceStr} • ${qty}u`;
-        })
-        .join(" · ");
-      return `${colegio ? colegio + ": " : ""}${talles}`;
-    });
-  };
-
-
-
-
-  // --- helpers existentes ---
-  // --- helpers existentes ---
   const getStockTotal = (product: any) => {
-    // Usamos el total ya calculado en el Context (seguro y simple)
     if (typeof product?.stock === "number") return product.stock;
-
-    // fallback legacy por si algún item no trae "stock"
     if (Array.isArray(product?.variantesPorTalle)) {
-      return product.variantesPorTalle.reduce((acc: number, v: any) => acc + (Number(v?.cantidad) || 0), 0);
+      return product.variantesPorTalle.reduce(
+        (acc: number, v: any) => acc + (Number(v?.cantidad) || 0), 0
+      );
     }
-
-    // fallback nuevo: sumamos anidados
     const nested = getNestedVariants(product);
     return nested.reduce((acc, v) => acc + (v.cantidad || 0), 0);
   };
 
   const hasLowStock = (product: any) => {
-    // Si hay variantes globales (legacy)
     if (Array.isArray(product?.variantesPorTalle) && product.variantesPorTalle.length > 0) {
       return product.variantesPorTalle.some((v: any) => Number(v?.cantidad ?? 0) <= 10);
     }
-    // Si hay variantes por colegio
     const nested = getNestedVariants(product);
-    if (nested.length > 0) {
-      return nested.some((v) => v.cantidad <= 10);
-    }
+    if (nested.length > 0) return nested.some((v) => v.cantidad <= 10);
     return false;
   };
 
-
   const openQR = (p: any) => {
-    const value = buildProductQRData(p.documentId); // ← SOLO documentId
+    const value = buildProductQRData(p.documentId);
     setQrFor({ id: p.documentId, value, nombre: p.nombre });
   };
 
   return (
     <div className="w-full">
       <div ref={topRef} />
-      {/* DIALOG QR */}
+
+      {/* ── DIALOG QR ── */}
       <Dialog open={!!qrFor} onOpenChange={(o) => !o && setQrFor(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>QR del producto</DialogTitle>
             <DialogDescription>{qrFor?.nombre}</DialogDescription>
           </DialogHeader>
-
-          {qrFor && (() => {
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrFor.value)}`;
-
-            const handlePrint = () => {
-              const w = window.open("", "_blank");
-              if (!w) return;
-              w.document.write(`
-                <!doctype html><html><head><meta charset="utf-8"><title>Imprimir QR</title>
-                <style>html,body{margin:0;padding:0}.wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;}img{width:220px;height:220px}</style>
-                </head><body><div class="wrap"><img id="qr" src="${qrUrl}" alt="QR" /></div>
-                <script>const img=document.getElementById('qr');img.addEventListener('load',()=>{window.print();window.close();});</script>
-              </body></html>`);
-              w.document.close();
-              w.focus();
-            };
-
-            const handleDownload = async () => {
-              try {
-                const res = await fetch(qrUrl, { mode: "cors" });
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `${(qrFor.nombre || "qr").toString().replace(/[^\w\-]+/g, "_")}.png`;
-                document.body.appendChild(a); a.click(); a.remove();
-                URL.revokeObjectURL(url);
-              } catch {
-                window.open(qrUrl, "_blank");
-              }
-            };
-
-            return (
-              <div className="flex flex-col items-center gap-3">
-                <img alt="QR" className="w-56 h-56" src={qrUrl} />
-                <code className="text-xs bg-muted px-2 py-1 rounded">{qrFor.value}</code>
-                <div className="flex gap-2 pt-1">
-                  <Button onClick={handlePrint}>Imprimir</Button>
-                  <Button variant="secondary" onClick={handleDownload}>Descargar</Button>
+          {qrFor &&
+            (() => {
+              const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrFor.value)}`;
+              const handlePrint = () => {
+                const w = window.open("", "_blank");
+                if (!w) return;
+                w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Imprimir QR</title>
+                  <style>html,body{margin:0;padding:0}.wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;}img{width:220px;height:220px}</style>
+                  </head><body><div class="wrap"><img id="qr" src="${qrUrl}" alt="QR" /></div>
+                  <script>const img=document.getElementById('qr');img.addEventListener('load',()=>{window.print();window.close();});</script></body></html>`);
+                w.document.close();
+                w.focus();
+              };
+              const handleDownload = async () => {
+                try {
+                  const res = await fetch(qrUrl, { mode: "cors" });
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${(qrFor.nombre || "qr").toString().replace(/[^\w\-]+/g, "_")}.png`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  URL.revokeObjectURL(url);
+                } catch {
+                  window.open(qrUrl, "_blank");
+                }
+              };
+              return (
+                <div className="flex flex-col items-center gap-3">
+                  <img alt="QR" className="w-56 h-56" src={qrUrl} />
+                  <code className="text-xs bg-muted px-2 py-1 rounded">{qrFor.value}</code>
+                  <div className="flex gap-2 pt-1">
+                    <Button onClick={handlePrint}>Imprimir</Button>
+                    <Button variant="secondary" onClick={handleDownload}>Descargar</Button>
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
         </DialogContent>
       </Dialog>
 
-      {/* DESKTOP */}
+      {/* ── DIALOG CONFIRMAR ELIMINACIÓN ── */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o && !isDeleting) {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar producto
+            </DialogTitle>
+            <DialogDescription>
+              Esta acción es <strong>permanente</strong> y no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2">
+            <p className="text-sm">
+              ¿Estás seguro que querés eliminar{" "}
+              <span className="font-semibold">{deleteTarget?.nombre}</span>?
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Se eliminarán también todas sus variantes y stock.
+            </p>
+            {deleteError && (
+              <p className="mt-3 text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">
+                {deleteError}
+              </p>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setDeleteTarget(null); setDeleteError(null); }}
+              disabled={isDeleting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="gap-2"
+            >
+              {isDeleting ? (
+                <>
+                  <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Eliminando…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── DESKTOP ── */}
       <TooltipProvider delayDuration={150}>
         <div className="hidden sm:block overflow-x-auto">
           <Table className="w-full table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead style={{ width: "55%" }}>Producto</TableHead>
-                <TableHead className="text-center" style={{ width: "12%" }}>Género</TableHead>
-                <TableHead style={{ width: "17%" }}>Stock</TableHead>
-                <TableHead className="text-center" style={{ width: "8%" }}>QR</TableHead>
-                <TableHead className="text-right" style={{ width: "8%" }}>Editar</TableHead>
+                <TableHead style={{ width: "50%" }}>Producto</TableHead>
+                <TableHead className="text-center" style={{ width: "11%" }}>Género</TableHead>
+                <TableHead style={{ width: "16%" }}>Stock</TableHead>
+                <TableHead className="text-center" style={{ width: "7%" }}>QR</TableHead>
+                <TableHead className="text-center" style={{ width: "7%" }}>Editar</TableHead>
+                <TableHead className="text-center" style={{ width: "9%" }}>Eliminar</TableHead>
               </TableRow>
             </TableHeader>
 
@@ -315,7 +365,9 @@ export default function ProductsTable({ filtro }: Props) {
               {visibles.map((product) => {
                 const totalStock = getStockTotal(product);
                 const lowStock = hasLowStock(product);
-                const colegiosStr = Array.isArray(product.colegio) ? product.colegio.join(", ") : "";
+                const colegiosStr = Array.isArray(product.colegio)
+                  ? product.colegio.join(", ")
+                  : "";
 
                 return (
                   <TableRow
@@ -326,14 +378,17 @@ export default function ProductsTable({ filtro }: Props) {
                     <TableCell>
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-md overflow-hidden bg-muted relative shrink-0">
-                          <Image src={"/nike.jpeg"} alt={product.nombre} fill className="object-cover" />
+                          <Image
+                            src={"/nike.jpeg"}
+                            alt={product.nombre}
+                            fill
+                            className="object-cover"
+                          />
                         </div>
                         <div className="flex flex-col min-w-0">
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <span className="font-medium truncate cursor-help">
-                                {product.nombre}
-                              </span>
+                              <span className="font-medium truncate cursor-help">{product.nombre}</span>
                             </TooltipTrigger>
                             <TooltipContent side="bottom" align="start" className="max-w-[520px] break-words">
                               {product.nombre}
@@ -358,35 +413,29 @@ export default function ProductsTable({ filtro }: Props) {
                     {/* GÉNERO */}
                     <TableCell className="capitalize text-center">{product.genero}</TableCell>
 
-
                     {/* STOCK */}
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">
                         <Badge variant={totalStock > 10 ? "outline" : "destructive"}>
                           {totalStock} en stock
                         </Badge>
-
-
-                        {/* NUEVO: botón para abrir modal de detalle */}
-                        {Array.isArray(product.variantesPorColegio) && product.variantesPorColegio.length > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="px-2 h-7 text-xs"
-                            onClick={() => setDetailFor(product)}
-                          >
-                            Más info
-                          </Button>
-                        )}
-
-
-                        {/* LEGACY: detalle por talle global (sigue funcionando igual) */}
-                        {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
-                          <StockDetailPopover variantes={product.variantesPorTalle} />
-                        )}
+                        {Array.isArray(product.variantesPorColegio) &&
+                          product.variantesPorColegio.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="px-2 h-7 text-xs"
+                              onClick={() => setDetailFor(product)}
+                            >
+                              Más info
+                            </Button>
+                          )}
+                        {Array.isArray(product.variantesPorTalle) &&
+                          product.variantesPorTalle.length > 0 && (
+                            <StockDetailPopover variantes={product.variantesPorTalle} />
+                          )}
                       </div>
                     </TableCell>
-
 
                     {/* QR */}
                     <TableCell className="text-center">
@@ -401,7 +450,6 @@ export default function ProductsTable({ filtro }: Props) {
                       </Button>
                     </TableCell>
 
-
                     {/* DIALOG DETALLE POR COLEGIO/TALLE */}
                     <Dialog open={!!detailFor} onOpenChange={(o) => !o && setDetailFor(null)}>
                       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto p-0">
@@ -415,10 +463,14 @@ export default function ProductsTable({ filtro }: Props) {
                           <div>
                             <div className="flex items-center ms-2 me-2 justify-between text-sm mb-2">
                               <span className="text-muted-foreground">
-                                {Array.isArray(detailFor?.variantesPorColegio) ? detailFor.variantesPorColegio.length : 0} colegio(s)
+                                {Array.isArray(detailFor?.variantesPorColegio)
+                                  ? detailFor.variantesPorColegio.length
+                                  : 0}{" "}
+                                colegio(s)
                               </span>
                               <span className="font-medium">
-                                Total: {typeof detailFor?.stock === "number" ? detailFor.stock : 0} u.
+                                Total:{" "}
+                                {typeof detailFor?.stock === "number" ? detailFor.stock : 0} u.
                               </span>
                             </div>
                             {renderDetailTable(detailFor)}
@@ -427,15 +479,32 @@ export default function ProductsTable({ filtro }: Props) {
                       </DialogContent>
                     </Dialog>
 
-
                     {/* EDITAR */}
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
                       <Link
                         href={`/admin/products/${product.documentId}`}
-                        className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium"
+                        className="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium"
                       >
                         <Edit className="h-4 w-4" />
                       </Link>
+                    </TableCell>
+
+                    {/* ELIMINAR */}
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Eliminar producto"
+                        onClick={() =>
+                          setDeleteTarget({
+                            documentId: product.documentId,
+                            nombre: product.nombre,
+                          })
+                        }
+                        className="hover:bg-destructive/10 hover:text-destructive text-muted-foreground/50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
@@ -445,7 +514,7 @@ export default function ProductsTable({ filtro }: Props) {
         </div>
       </TooltipProvider>
 
-      {/* MOBILE (tarjeta limpia y responsiva) */}
+      {/* ── MOBILE ── */}
       <div className="grid gap-4 sm:hidden mt-4 px-4">
         {visibles.map((product) => {
           const totalStock = getStockTotal(product);
@@ -454,69 +523,93 @@ export default function ProductsTable({ filtro }: Props) {
           return (
             <div
               key={product.id}
-              className={`border rounded-xl p-4 shadow-sm transition ${lowStock ? "bg-red-50 border-red-200" : "bg-white"}`}
+              className={`border rounded-xl p-4 shadow-sm transition ${
+                lowStock ? "bg-red-50 border-red-200" : "bg-white"
+              }`}
             >
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-base">{product.nombre}</h3>
-                <Badge className={`text-xs px-2 py-1 font-medium rounded-full ${totalStock <= 10 ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-800"}`}>
+                <Badge
+                  className={`text-xs px-2 py-1 font-medium rounded-full ${
+                    totalStock <= 10
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-800"
+                  }`}
+                >
                   {totalStock} en stock
                 </Badge>
               </div>
 
               <p className="text-sm text-muted-foreground capitalize">Género: {product.genero}</p>
-              {/* NUEVO: detalle por colegio -> talles */}
-              {Array.isArray(product.variantesPorColegio) && product.variantesPorColegio.length > 0 && (
-                <div className="mt-3">
-                  <div className="text-[11px] text-muted-foreground/80 mb-1">Colegio • Talle • Precio • Stock</div>
-                  <div className="text-sm space-y-2">
-                    {product.variantesPorColegio.map((c: any, idxC: number) => (
-                      <div key={idxC}>
-                        <div className="font-medium text-[13px]">{c?.colegio ?? "-"}</div>
-                        <div className="mt-1 space-y-1">
-                          {(Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : []).map((v: any, idxV: number) => {
-                            const qty = Number(v?.cantidad ?? 0);
-                            const price = Number(v?.precio ?? 0);
-                            return (
-                              <div key={v?.id ?? `${idxC}-${idxV}`} className={`flex justify-between ${qty <= 10 ? "text-red-700 font-semibold" : "text-muted-foreground"}`}>
-                                <span className="capitalize">{v?.talle ?? "-"}</span>
-                                <span>${isNaN(price) ? "-" : price.toLocaleString("es-AR")} • {qty} u.</span>
-                              </div>
-                            );
-                          })}
+
+              {Array.isArray(product.variantesPorColegio) &&
+                product.variantesPorColegio.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-[11px] text-muted-foreground/80 mb-1">
+                      Colegio • Talle • Precio • Stock
+                    </div>
+                    <div className="text-sm space-y-2">
+                      {product.variantesPorColegio.map((c: any, idxC: number) => (
+                        <div key={idxC}>
+                          <div className="font-medium text-[13px]">{c?.colegio ?? "-"}</div>
+                          <div className="mt-1 space-y-1">
+                            {(Array.isArray(c?.variantesPorTalles) ? c.variantesPorTalles : []).map(
+                              (v: any, idxV: number) => {
+                                const qty = Number(v?.cantidad ?? 0);
+                                const price = Number(v?.precio ?? 0);
+                                return (
+                                  <div
+                                    key={v?.id ?? `${idxC}-${idxV}`}
+                                    className={`flex justify-between ${
+                                      qty <= 10 ? "text-red-700 font-semibold" : "text-muted-foreground"
+                                    }`}
+                                  >
+                                    <span className="capitalize">{v?.talle ?? "-"}</span>
+                                    <span>
+                                      ${isNaN(price) ? "-" : price.toLocaleString("es-AR")} • {qty} u.
+                                    </span>
+                                  </div>
+                                );
+                              }
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/** LEGACY: detalle por talle global */}
-
-              {Array.isArray(product.variantesPorTalle) && product.variantesPorTalle.length > 0 && (
-                <div className="mt-3">
-                  <div className="flex justify-between text-[11px] text-muted-foreground/80 mb-1">
-                    <span>Talle</span>
-                    <span>Precio • Stock</span>
+              {Array.isArray(product.variantesPorTalle) &&
+                product.variantesPorTalle.length > 0 && (
+                  <div className="mt-3">
+                    <div className="flex justify-between text-[11px] text-muted-foreground/80 mb-1">
+                      <span>Talle</span>
+                      <span>Precio • Stock</span>
+                    </div>
+                    <div className="text-sm mb-3 space-y-1">
+                      {product.variantesPorTalle.map((v: any, idx: number) => {
+                        const key = v?.id ?? `${v?.talle ?? "sin-talle"}-${idx}`;
+                        const qty = Number(v?.cantidad ?? 0);
+                        const price = Number(v?.precio ?? 0);
+                        return (
+                          <div
+                            key={key}
+                            className={`flex justify-between ${
+                              qty <= 10 ? "text-red-700 font-semibold" : "text-muted-foreground"
+                            }`}
+                          >
+                            <span className="capitalize">{v?.talle ?? "-"}</span>
+                            <span>
+                              ${isNaN(price) ? "-" : price.toLocaleString("es-AR")} • {qty} u.
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="text-sm mb-3 space-y-1">
-                    {product.variantesPorTalle.map((v: any, idx: number) => {
-                      const key = v?.id ?? `${v?.talle ?? "sin-talle"}-${idx}`;
-                      const qty = Number(v?.cantidad ?? 0);
-                      const price = Number(v?.precio ?? 0);
-                      const isLow = qty <= 10;
-                      return (
-                        <div key={key} className={`flex justify-between ${isLow ? "text-red-700 font-semibold" : "text-muted-foreground"}`}>
-                          <span className="capitalize">{v?.talle ?? "-"}</span>
-                          <span>${isNaN(price) ? "-" : price.toLocaleString("es-AR")} • {qty} u.</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+                )}
 
-
-              <div className="flex gap-2 mt-2">
+              <div className="flex gap-2 mt-3 flex-wrap">
                 <Button size="sm" variant="secondary" onClick={() => openQR(product)}>
                   <Eye className="h-4 w-4 mr-1" /> QR
                 </Button>
@@ -532,18 +625,38 @@ export default function ProductsTable({ filtro }: Props) {
                 >
                   <QrCode className="h-4 w-4" /> Stock
                 </Link>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 ml-auto"
+                  onClick={() =>
+                    setDeleteTarget({
+                      documentId: product.documentId,
+                      nombre: product.nombre,
+                    })
+                  }
+                >
+                  <Trash2 className="h-4 w-4 mr-1" /> Eliminar
+                </Button>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* FOOTER PAGINACIÓN */}
+      {/* ── FOOTER PAGINACION ── */}
       <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="text-sm text-muted-foreground">
-          {productosFiltrados.length
-            ? <>Mostrando <span className="font-medium">{showingFrom}</span>–<span className="font-medium">{showingTo}</span> de <span className="font-medium">{productosFiltrados.length}</span></>
-            : "Sin resultados"}
+          {productosFiltrados.length ? (
+            <>
+              Mostrando{" "}
+              <span className="font-medium">{showingFrom}</span>–
+              <span className="font-medium">{showingTo}</span> de{" "}
+              <span className="font-medium">{productosFiltrados.length}</span>
+            </>
+          ) : (
+            "Sin resultados"
+          )}
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto overflow-x-auto">
@@ -571,7 +684,9 @@ export default function ProductsTable({ filtro }: Props) {
                 {n}
               </Button>
             ) : (
-              <span key={idx} className="px-2 text-muted-foreground select-none">…</span>
+              <span key={idx} className="px-2 text-muted-foreground select-none">
+                …
+              </span>
             )
           )}
 

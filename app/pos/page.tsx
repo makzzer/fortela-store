@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import POSCartItem from "@/components/pos/pos-cart-item";
+import ProductTableSelector from "@/components/pos/ProductTableSelector";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Scan, ShoppingCart, CreditCard, Trash2 } from "lucide-react";
+import {
+  Scan, ShoppingCart, CreditCard, Trash2, Table2, AlertCircle, ChevronRight
+} from "lucide-react";
 import Swal from "sweetalert2";
-
-
-
+import { useProductos } from "@/app/context/ProductosContext";
 import { useRouter } from "next/navigation";
-import { useCallback } from "react";
 
+const QRScanner = dynamic(() => import("@/components/admin/qr-scanner"), { ssr: false });
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface VarianteTalle { talle: string; cantidad: number; precio?: number }
 interface ColegioBlock { colegio: string; variantesPorTalles: VarianteTalle[] }
@@ -26,44 +29,96 @@ interface POSItem {
   name: string;
   price: number;
   quantity: number;
-  size?: string;                 // talle
-  colegio?: string;              // NUEVO
+  size?: string;
+  colegio?: string;
   qr_code: string;
-  stock: number;                 // stock de la variante elegida
-  totalStock: number;            // stock total del producto
+  stock: number;
+  totalStock: number;
   pendingSize?: boolean;
-  variantes?: VarianteTalle[];                // legacy (sin colegio)
-  variantesPorColegio?: ColegioBlock[];       // NUEVO
+  variantes?: VarianteTalle[];
+  variantesPorColegio?: ColegioBlock[];
 }
 
+type ActiveTab = "table" | "scan";
 
-
-const QRScanner = dynamic(() => import("@/components/admin/qr-scanner"), { ssr: false });
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function POSPage() {
-  const [isScanning, setIsScanning] = useState(false);
-  const [cart, setCart] = useState<POSItem[]>([]);
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const  productos  = useProductos();
   const { toast } = useToast();
-  const [showModal, setShowModal] = useState(false);
-
-  // Modal de escaneo/selección
-  const [productoActual, setProductoActual] = useState<any | null>(null);
-  const [variantes, setVariantes] = useState<VarianteTalle[]>([]); // talles del colegio elegido o legacy
-  const [selectedColegio, setSelectedColegio] = useState<string>(""); // NUEVO
-  const [selecciones, setSelecciones] = useState<Record<string, number>>({});
-
-  // item que está editando talles en el carrito
-  const [sizePickerItem, setSizePickerItem] = useState<POSItem | null>(null);
-
-  // cantidades por talle para el picker del carrito
-  const [cartSizeSelections, setCartSizeSelections] = useState<Record<string, number>>({});
-
   const router = useRouter();
 
+  const [activeTab, setActiveTab] = useState<ActiveTab>("table");
+  const [isScanning, setIsScanning] = useState(false);
 
+  const [cart, setCart] = useState<POSItem[]>([]);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
+  const [showModal, setShowModal] = useState(false);
+  const [productoActual, setProductoActual] = useState<any | null>(null);
+  const [variantes, setVariantes] = useState<VarianteTalle[]>([]);
+  const [selectedColegio, setSelectedColegio] = useState<string>("");
+  const [selecciones, setSelecciones] = useState<Record<string, number>>({});
 
+  const [sizePickerItem, setSizePickerItem] = useState<POSItem | null>(null);
+  const [cartSizeSelections, setCartSizeSelections] = useState<Record<string, number>>({});
+
+  // ─── Derived ──────────────────────────────────────────────────────────────
+
+  const hasPending = cart.some(i => i.pendingSize);
+  const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
+  const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const total = subtotal;
+
+  // ─── Open product modal ───────────────────────────────────────────────────
+
+  const openProductModal = useCallback((item: any) => {
+    const vpc: ColegioBlock[] = Array.isArray(item.variantesPorColegio) ? item.variantesPorColegio : [];
+    const legacy: VarianteTalle[] = Array.isArray(item.variantesPorTalle)
+      ? item.variantesPorTalle
+      : Array.isArray(item.variantes) ? item.variantes : [];
+
+    setProductoActual({ ...item, totalStock: item.stock, variantesPorColegio: vpc, variantes: legacy });
+
+    if (vpc.length > 0) {
+      const first = vpc[0];
+      setSelectedColegio(first.colegio);
+      setVariantes(first.variantesPorTalles || []);
+      setSelecciones(Object.fromEntries((first.variantesPorTalles || []).map((v: any) => [v.talle, 0])));
+      setShowModal(true);
+    } else if (legacy.length > 0) {
+      setSelectedColegio("");
+      setVariantes(legacy);
+      setSelecciones(Object.fromEntries(legacy.map((v: any) => [v.talle, 0])));
+      setShowModal(true);
+    } else {
+      // Producto básico sin variantes → agregar directo, acumulable
+      const basicItem: POSItem = {
+        id: String(item.id ?? item.documentId),
+        documentId: item.documentId,
+        name: item.nombre,
+        price: item.precio ?? 0,
+        quantity: 1,
+        qr_code: item.documentId,
+        stock: item.stock ?? 999,
+        totalStock: item.stock ?? 999,
+        variantes: [],
+        variantesPorColegio: [],
+      };
+      setCart(prev => {
+        const existing = prev.find(
+          c => c.qr_code === basicItem.qr_code && !c.size && !c.colegio && !c.pendingSize
+        );
+        if (existing) {
+          return prev.map(c => c === existing ? { ...c, quantity: c.quantity + 1 } : c);
+        }
+        return [...prev, basicItem];
+      });
+      toast({ title: "Producto agregado", description: basicItem.name });
+    }
+  }, [toast]);
+
+  // ─── QR Scan ──────────────────────────────────────────────────────────────
 
   const handleScan = async (code: string) => {
     setIsScanning(false);
@@ -77,65 +132,39 @@ export default function POSPage() {
         toast({ variant: "destructive", title: "Producto no encontrado", description: `ID: ${code}` });
         return;
       }
-
-      const vpc: ColegioBlock[] = Array.isArray(item.variantesPorColegio) ? item.variantesPorColegio : [];
-      const legacy: VarianteTalle[] = Array.isArray(item.variantesPorTalle) ? item.variantesPorTalle : [];
-
-      setProductoActual({ ...item, totalStock: item.stock, variantesPorColegio: vpc, variantes: legacy });
-
-      if (vpc.length > 0) {
-        // flujo nuevo: arrancamos con el primer colegio
-        const first = vpc[0];
-        setSelectedColegio(first.colegio);
-        setVariantes(first.variantesPorTalles || []);
-        setSelecciones(Object.fromEntries((first.variantesPorTalles || []).map((v: any) => [v.talle, 0])));
-      } else if (legacy.length > 0) {
-        setSelectedColegio(""); // no aplica
-        setVariantes(legacy);
-        setSelecciones(Object.fromEntries(legacy.map((v: any) => [v.talle, 0])));
-      } else {
-        toast({ variant: "destructive", title: "Sin stock disponible" });
-        return;
-      }
-      setShowModal(true);
+      openProductModal(item);
     } catch {
       toast({ variant: "destructive", title: "Error al escanear producto" });
     }
   };
 
+  // ─── Table select ──────────────────────────────────────────────────────────
 
+  const handleSelectFromTable = useCallback((producto: any) => {
+    openProductModal(producto);
+  }, [openProductModal]);
+
+  // ─── Modal: talle helpers ──────────────────────────────────────────────────
 
   const setCantidadTalle = (talle: string, cantidad: number, stockMax: number) => {
     setSelecciones(prev => ({ ...prev, [talle]: Math.max(0, Math.min(stockMax, cantidad)) }));
   };
-
   const incTalle = (talle: string, stockMax: number) => {
     setSelecciones(prev => ({ ...prev, [talle]: Math.min(stockMax, (prev[talle] ?? 0) + 1) }));
   };
-
   const decTalle = (talle: string) => {
     setSelecciones(prev => ({ ...prev, [talle]: Math.max(0, (prev[talle] ?? 0) - 1) }));
   };
+  const totalSeleccionado = Object.values(selecciones).reduce((a, b) => a + (b || 0), 0);
 
-  const openSizePicker = (item: POSItem) => {
-    // ⬇️ si el item tiene colegio, tomar los talles de ese colegio;
-    // si no, usar legacy variantes
-    let talles: VarianteTalle[] = [];
-    if (item.variantesPorColegio?.length && item.colegio) {
-      talles = item.variantesPorColegio.find(c => c.colegio === item.colegio)?.variantesPorTalles || [];
-    } else {
-      talles = item.variantes || [];
-    }
-
-    const base: Record<string, number> = {};
-    talles.forEach(v => { base[v.talle] = 0; });
-
-    setCartSizeSelections(base);
-    // ⬇️ asegurar que el picker reciba los talles correctos
-    setSizePickerItem({ ...item, variantes: talles });
+  const onChangeColegioEnModal = (colegio: string) => {
+    if (!productoActual?.variantesPorColegio?.length) return;
+    const block = productoActual.variantesPorColegio.find((c: any) => c.colegio === colegio);
+    setSelectedColegio(colegio);
+    const talles = block?.variantesPorTalles || [];
+    setVariantes(talles);
+    setSelecciones(Object.fromEntries(talles.map((v: any) => [v.talle, 0])));
   };
-
-
 
   const confirmarSelecciones = () => {
     if (!productoActual || !variantes?.length) return;
@@ -143,18 +172,17 @@ export default function POSPage() {
 
     setCart(prev => {
       let updated = [...prev];
-
       for (const v of variantes) {
         const qty = selecciones[v.talle] ?? 0;
         if (qty <= 0) continue;
 
         const price = typeof v.precio === "number" ? v.precio : (productoActual.precio ?? 0);
+        const colegioKey = productoActual.variantesPorColegio?.length ? selectedColegio : "";
 
-        // clave por producto + colegio + talle
         const same = updated.find(i =>
           i.qr_code === productoActual.documentId &&
           i.size === v.talle &&
-          (i.colegio ?? "") === (productoActual.variantesPorColegio?.length ? selectedColegio : "")
+          (i.colegio ?? "") === colegioKey
         );
         const yaAgregado = same ? same.quantity : 0;
         const disponible = v.cantidad ?? 0;
@@ -169,7 +197,7 @@ export default function POSPage() {
         }
 
         const baseItem: POSItem = {
-          id: productoActual.id.toString(),
+          id: String(productoActual.id ?? productoActual.documentId),
           documentId: productoActual.documentId,
           name: productoActual.nombre,
           price,
@@ -184,87 +212,71 @@ export default function POSPage() {
         };
 
         if (same) {
-          updated = updated.map(i =>
-            i === same ? { ...i, quantity: i.quantity + qty } : i
-          );
+          updated = updated.map(i => i === same ? { ...i, quantity: i.quantity + qty } : i);
         } else {
           updated.push(baseItem);
         }
-
         agregoAlgo = true;
       }
-
-      if (agregoAlgo && sizePickerItem?.pendingSize) {
-        updated = updated.filter(p =>
-          !(
-            p.qr_code === (sizePickerItem as POSItem).qr_code &&
-            (p.colegio ?? "") === ((sizePickerItem as POSItem).colegio ?? "") &&
-            !p.size && p.pendingSize
-          )
-        );
-      }
-
-
-
-
       return updated;
     });
 
     toast({
       title: agregoAlgo ? "Productos agregados" : "Sin cambios",
-      description: agregoAlgo ? "Se añadieron los talles seleccionados." : "No se agregó ningún talle.",
+      description: agregoAlgo ? "Se añadieron los talles seleccionados." : "No seleccionaste ningún talle.",
       variant: agregoAlgo ? "default" : "destructive"
     });
-
     setShowModal(false);
     setSelecciones({});
   };
 
-
-
   const continuarSinTalle = () => {
     if (!productoActual) return;
 
-    // total de stock sumando todas las variantes
-    const totalStock =
-      (productoActual.variantesPorColegio?.length
-        ? productoActual.variantesPorColegio.flatMap((c: any) => c.variantesPorTalles || [])
-        : productoActual.variantes || []
-      ).reduce((s: number, v: any) => s + (v.cantidad ?? 0), 0);
+    const totalStock = (productoActual.variantesPorColegio?.length
+      ? productoActual.variantesPorColegio.flatMap((c: any) => c.variantesPorTalles || [])
+      : productoActual.variantes || []
+    ).reduce((s: number, v: any) => s + (v.cantidad ?? 0), 0);
 
-    // ⬇️ talles a guardar dentro del item (colegio → talles, o legacy)
-    const tallesParaItem: VarianteTalle[] =
-      productoActual.variantesPorColegio?.length
-        ? (productoActual.variantesPorColegio.find((c: any) => c.colegio === selectedColegio)?.variantesPorTalles || [])
-        : (productoActual.variantes || []);
+    const tallesParaItem: VarianteTalle[] = productoActual.variantesPorColegio?.length
+      ? (productoActual.variantesPorColegio.find((c: any) => c.colegio === selectedColegio)?.variantesPorTalles || [])
+      : (productoActual.variantes || []);
 
     const productPendiente: POSItem = {
-      id: productoActual.id.toString(),
+      id: String(productoActual.id ?? productoActual.documentId),
       documentId: productoActual.documentId,
       name: productoActual.nombre,
       price: productoActual.precio ?? 0,
-      size: undefined,
-      colegio: productoActual.variantesPorColegio?.length ? selectedColegio : undefined, // ✅ colegio guardado
       qr_code: productoActual.documentId,
       quantity: 1,
       stock: totalStock,
       totalStock,
       pendingSize: true,
-      variantes: tallesParaItem,                       // ✅ talles del colegio seleccionado
+      colegio: productoActual.variantesPorColegio?.length ? selectedColegio : undefined,
+      variantes: tallesParaItem,
       variantesPorColegio: productoActual.variantesPorColegio || [],
     };
 
     setCart(prev => [...prev, productPendiente]);
-    toast({ title: "Producto agregado", description: `${productPendiente.name} (talle/cole pendiente)` });
+    toast({ title: "Producto agregado", description: `${productPendiente.name} (talle pendiente)` });
     setShowModal(false);
     setSelecciones({});
   };
 
+  // ─── Cart size picker ──────────────────────────────────────────────────────
 
-
-
-
-  const hasPending = cart.some(i => (i as any).pendingSize);
+  const openSizePicker = (item: POSItem) => {
+    let talles: VarianteTalle[] = [];
+    if (item.variantesPorColegio?.length && item.colegio) {
+      talles = item.variantesPorColegio.find(c => c.colegio === item.colegio)?.variantesPorTalles || [];
+    } else {
+      talles = item.variantes || [];
+    }
+    const base: Record<string, number> = {};
+    talles.forEach(v => { base[v.talle] = 0; });
+    setCartSizeSelections(base);
+    setSizePickerItem({ ...item, variantes: talles });
+  };
 
   const setCartPickerQty = (talle: string, qty: number, max: number) => {
     setCartSizeSelections(prev => ({ ...prev, [talle]: Math.max(0, Math.min(max, qty)) }));
@@ -276,17 +288,15 @@ export default function POSPage() {
     setCartSizeSelections(prev => ({ ...prev, [talle]: Math.max(0, (prev[talle] ?? 0) - 1) }));
   };
 
-  // Aplicar selección múltiple al carrito (merge por talle)
   const applyCartSizeSelections = () => {
     if (!sizePickerItem || !(sizePickerItem.variantes?.length)) return;
-
-    const variantes = sizePickerItem.variantes;
+    const vars = sizePickerItem.variantes;
     let agregoAlgo = false;
 
     setCart(prev => {
       let updated = [...prev];
 
-      for (const v of variantes) {
+      for (const v of vars) {
         const qty = cartSizeSelections[v.talle] ?? 0;
         if (qty < 0) continue;
 
@@ -312,58 +322,49 @@ export default function POSPage() {
           const price = typeof v.precio === "number" ? v.precio : sizePickerItem.price;
 
           if (existingIdx >= 0) {
-            // Reemplazo/seteo cantidad y aseguro conservar colegio y variantes para que siga el botón
             updated[existingIdx] = {
               ...updated[existingIdx],
-              quantity: esMismoTalleQueEdito ? qty : (updated[existingIdx].quantity + qty),
+              quantity: esMismoTalleQueEdito ? qty : updated[existingIdx].quantity + qty,
               price,
               colegio: sizePickerItem.colegio ?? updated[existingIdx].colegio,
               variantesPorColegio: sizePickerItem.variantesPorColegio || updated[existingIdx].variantesPorColegio || [],
               variantes: sizePickerItem.variantes || updated[existingIdx].variantes || [],
             };
           } else {
-            // Nueva línea: incluir colegio y variantes para habilitar “Elegir / cambiar talles”
             updated.push({
               id: sizePickerItem.id,
               documentId: sizePickerItem.documentId,
               name: sizePickerItem.name,
               price,
               size: v.talle,
-              colegio: sizePickerItem.colegio,                               // ✅ colegio
+              colegio: sizePickerItem.colegio,
               qr_code: sizePickerItem.qr_code,
               quantity: qty,
               stock: disponible,
               totalStock: sizePickerItem.totalStock,
-              variantesPorColegio: sizePickerItem.variantesPorColegio || [],  // ✅ deja el botón activo
-              variantes: sizePickerItem.variantes || [],                      // (en legacy sirve esto)
+              variantesPorColegio: sizePickerItem.variantesPorColegio || [],
+              variantes: sizePickerItem.variantes || [],
             } as POSItem);
           }
-
           agregoAlgo = true;
         }
       }
 
-      // Si venía de línea PENDIENTE → borrarla por claves
       if (agregoAlgo && sizePickerItem?.pendingSize) {
         updated = updated.filter(p =>
-          !(
-            p.qr_code === sizePickerItem.qr_code &&
+          !(p.qr_code === sizePickerItem.qr_code &&
             (p.colegio ?? "") === (sizePickerItem.colegio ?? "") &&
-            !p.size && p.pendingSize
-          )
+            !p.size && p.pendingSize)
         );
       }
 
-      // Si edité una línea con talle y la dejé en 0 → eliminar original
       if (sizePickerItem?.size) {
         const qtyOriginal = cartSizeSelections[sizePickerItem.size] ?? 0;
         if (qtyOriginal === 0) {
           updated = updated.filter(p =>
-            !(
-              p.qr_code === sizePickerItem.qr_code &&
+            !(p.qr_code === sizePickerItem.qr_code &&
               (p.colegio ?? "") === (sizePickerItem.colegio ?? "") &&
-              p.size === sizePickerItem.size
-            )
+              p.size === sizePickerItem.size)
           );
         }
       }
@@ -376,30 +377,21 @@ export default function POSPage() {
     } else {
       toast({ variant: "destructive", title: "Sin cambios", description: "No seleccionaste cantidades." });
     }
-
     setSizePickerItem(null);
     setCartSizeSelections({});
   };
 
-
-  const onChangeColegioEnModal = (colegio: string) => {
-    if (!productoActual?.variantesPorColegio?.length) return;
-    const block = productoActual.variantesPorColegio.find((c: any) => c.colegio === colegio);
-    setSelectedColegio(colegio);
-    const talles = block?.variantesPorTalles || [];
-    setVariantes(talles);
-    setSelecciones(Object.fromEntries(talles.map((v: any) => [v.talle, 0])));
-  };
+  // ─── Cart actions ──────────────────────────────────────────────────────────
 
   const updateQuantity = (id: string, size: string | undefined, amount: number, colegio?: string) => {
     setCart(prev => prev.map(i => {
       if (i.id === id && i.size === size && (i.colegio ?? "") === (colegio ?? "")) {
-        if (!i.size) {
-          toast({ variant: "destructive", title: "Elegí un talle", description: "Seleccioná un talle antes de ajustar la cantidad." });
+        if (size === undefined && !i.pendingSize && (i.variantes?.length || i.variantesPorColegio?.length)) {
+          toast({ variant: "destructive", title: "Elegí un talle primero" });
           return i;
         }
         const nueva = i.quantity + amount;
-        if (amount > 0 && nueva > i.stock) {
+        if (amount > 0 && i.size && nueva > i.stock) {
           toast({ variant: "destructive", title: "Sin stock suficiente", description: `Solo hay ${i.stock} unidades del talle ${i.size}.` });
           return i;
         }
@@ -413,111 +405,82 @@ export default function POSPage() {
     setCart(prev => prev.filter(i => !(i.id === id && i.size === size && (i.colegio ?? "") === (colegio ?? ""))));
   };
 
-  const totalSeleccionado = Object.values(selecciones).reduce((a, b) => a + (b || 0), 0);
-
-
   const clearCart = () => setCart([]);
 
-  // Totales (SIN impuestos)
-  const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const tax = 0;                 // <- eliminado
-  const total = subtotal;        // <- total = solo productos
+  // ─── Checkout ─────────────────────────────────────────────────────────────
 
+  const normalizeProducto = (raw: any) => {
+    if (!raw) return null;
+    if (raw.attributes) {
+      return {
+        id: raw.id,
+        documentId: raw.documentId ?? raw.attributes.documentId,
+        precio: raw.attributes.precio,
+        variantesPorColegio: raw.attributes.variantesPorColegio ?? [],
+        variantesPorTalle: raw.attributes.variantesPorTalle ?? [],
+        stock: raw.attributes.stock,
+        nombre: raw.attributes.nombre,
+      };
+    }
+    return {
+      id: raw.id,
+      documentId: raw.documentId,
+      precio: raw.precio,
+      variantesPorColegio: raw.variantesPorColegio ?? [],
+      variantesPorTalle: raw.variantesPorTalle ?? [],
+      stock: raw.stock,
+      nombre: raw.nombre,
+    };
+  };
+
+  const escapeHtml = (value: any) =>
+    String(typeof value === "string" ? value : JSON.stringify(value, null, 2))
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const showDebugModal = async (title: string, payload: any, response: any, extra?: Record<string, any>) => {
+    await Swal.fire({
+      icon: "error",
+      title,
+      html: `<div style="text-align:left;max-height:70vh;overflow:auto">
+        ${extra ? `<h3 style="margin:6px 0">Contexto</h3><pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(extra)}</pre>` : ""}
+        <h3 style="margin:6px 0">Payload</h3><pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(payload)}</pre>
+        <h3 style="margin:6px 0">Respuesta</h3><pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(response)}</pre>
+      </div>`,
+      width: 900,
+      confirmButtonText: "Cerrar",
+    });
+  };
 
   const handleCheckout = async () => {
-    // 1) Bloqueo por talles pendientes
     if (hasPending) {
-      toast({
-        variant: "destructive",
-        title: "Faltan talles",
-        description: "Asigná los talles pendientes antes de continuar.",
-      });
+      toast({ variant: "destructive", title: "Faltan talles", description: "Asigná los talles pendientes antes de continuar." });
       return;
     }
-
     setIsCheckingOut(true);
 
-    // helper: normaliza respuesta de Strapi (v4/v5) para tener campos planos y id numérico
-    const normalizeProducto = (raw: any) => {
-      if (!raw) return null;
-      if (raw.attributes) {
-        // estructura { id, attributes: {...} }
-        return {
-          id: raw.id, // <-- numérico real de Strapi
-          documentId: raw.documentId ?? raw.attributes.documentId,
-          precio: raw.attributes.precio,
-          variantesPorColegio: raw.attributes.variantesPorColegio ?? [],
-          variantesPorTalle: raw.attributes.variantesPorTalle ?? [],
-          stock: raw.attributes.stock,
-          nombre: raw.attributes.nombre,
-        };
-      }
-      // estructura plana (id/documentId en top-level)
-      return {
-        id: raw.id, // <-- numérico real de Strapi
-        documentId: raw.documentId,
-        precio: raw.precio,
-        variantesPorColegio: raw.variantesPorColegio ?? [],
-        variantesPorTalle: raw.variantesPorTalle ?? [],
-        stock: raw.stock,
-        nombre: raw.nombre,
-      };
-    };
-
-
-
-    // --- Helpers de depuración (modal con payload/response) ---
-    const escapeHtml = (value: any) =>
-      String(typeof value === "string" ? value : JSON.stringify(value, null, 2))
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-
-    const showDebugModal = async (
-      title: string,
-      payload: any,
-      response: any,
-      extra?: Record<string, any>
-    ) => {
-      const html = `
-  <div style="text-align:left;max-height:70vh;overflow:auto">
-    ${extra ? `<h3 style="margin:6px 0">Contexto</h3>
-    <pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(extra)}</pre>` : ""}
-
-    <h3 style="margin:6px 0">Payload enviado</h3>
-    <pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(payload)}</pre>
-
-    <h3 style="margin:6px 0">Respuesta</h3>
-    <pre style="white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px">${escapeHtml(response)}</pre>
-  </div>
-`;
-      await Swal.fire({
-        icon: "error",
-        title,
-        html,
-        width: 900,
-        confirmButtonText: "Cerrar",
-      });
-    };
-
-
     try {
-      // 2) Traemos productos una sola vez y validamos stock (soporta colegio → talles y legacy)
       const productosByDoc: Record<string, any> = {};
 
       for (const item of cart) {
+        const isBasic = !item.size && !item.variantes?.length && !item.variantesPorColegio?.length;
+
+        if (isBasic) {
+          const res = await fetch(
+            `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate[variantesPorColegio][populate]=*&populate=variantesPorTalle`
+          );
+          const data = await res.json();
+          const raw = data?.data?.[0];
+          if (!raw) throw new Error(`Producto no encontrado: ${item.documentId}`);
+          productosByDoc[item.documentId] = normalizeProducto(raw);
+          continue;
+        }
+
         if (!item.size) {
-          await Swal.fire({
-            icon: "error",
-            title: "Falta seleccionar talle",
-            text: `El producto ${item.name} no tiene talle asignado.`,
-            confirmButtonText: "Aceptar",
-          });
+          await Swal.fire({ icon: "error", title: "Falta talle", text: `El producto ${item.name} no tiene talle asignado.`, confirmButtonText: "Aceptar" });
           setIsCheckingOut(false);
           return;
         }
 
-        // Traer variantes anidadas
         const res = await fetch(
           `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate[variantesPorColegio][populate]=*&populate=variantesPorTalle`
         );
@@ -527,21 +490,14 @@ export default function POSPage() {
 
         const producto = normalizeProducto(raw);
         if (!producto?.id || Number.isNaN(Number(producto.id))) {
-          throw new Error(`Producto sin id (Strapi) válido: ${item.documentId}`);
+          throw new Error(`Producto sin id válido: ${item.documentId}`);
         }
-
         productosByDoc[item.documentId] = producto;
 
-        // Validación de stock por colegio+talle o legacy
         let stockDisponible = 0;
         if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
           if (!item.colegio) {
-            await Swal.fire({
-              icon: "error",
-              title: "Falta seleccionar colegio",
-              text: `El producto ${item.name} requiere colegio.`,
-              confirmButtonText: "Aceptar",
-            });
+            await Swal.fire({ icon: "error", title: "Falta colegio", text: `El producto ${item.name} requiere colegio.`, confirmButtonText: "Aceptar" });
             setIsCheckingOut(false);
             return;
           }
@@ -554,18 +510,13 @@ export default function POSPage() {
         }
 
         if (item.quantity > stockDisponible) {
-          await Swal.fire({
-            icon: "error",
-            title: "Stock insuficiente",
-            text: `${item.name} (${item.colegio ?? "sin colegio"} • ${item.size}) tiene solo ${stockDisponible} unidad(es).`,
-            confirmButtonText: "Aceptar",
-          });
+          await Swal.fire({ icon: "error", title: "Stock insuficiente", text: `${item.name} (${item.colegio ?? "sin colegio"} • ${item.size}) tiene solo ${stockDisponible} unidad(es).`, confirmButtonText: "Aceptar" });
           setIsCheckingOut(false);
           return;
         }
       }
 
-      // 3) Crear orden
+      // Crear orden
       const fecha = new Date().toISOString();
       const ordenPayload = {
         data: {
@@ -573,7 +524,6 @@ export default function POSPage() {
           estado: "procesando",
           tipo_venta: "mostrador",
           fecha,
-          // si tenés cliente, conectalo así:
           fortela_cliente: { connect: [Number(3)] },
         },
       };
@@ -585,189 +535,117 @@ export default function POSPage() {
       });
       const ordenJson = await ordenRes.json();
       if (!ordenRes.ok) {
-        await showDebugModal(
-          "Error creando orden",
-          ordenPayload,
-          ordenJson,
-          { endpoint: "POST /api/fortela-ordenes" }
-        );
+        await showDebugModal("Error creando orden", ordenPayload, ordenJson, { endpoint: "POST /api/fortela-ordenes" });
         throw new Error("Error al crear la orden");
       }
 
       const ordenId: number = ordenJson.data.id;
       const ordenDocId: string = ordenJson.data.documentId;
 
-      // 4) Crear items + actualizar stock por talle (colegio o legacy)
+      // Crear items + actualizar stock
       for (const item of cart) {
         const producto = productosByDoc[item.documentId];
+        const isBasic = !item.size && !item.variantes?.length && !item.variantesPorColegio?.length;
 
-        // Precio por talla (respeta precio de la variante si existe)
         let precioVariante = Number(item.price ?? 0);
-        if (!precioVariante) {
+        if (!precioVariante && !isBasic) {
           if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
             const block = producto.variantesPorColegio.find((c: any) => c.colegio === item.colegio);
-            precioVariante = Number(
-              block?.variantesPorTalles?.find((v: any) => v.talle === item.size)?.precio ?? producto?.precio ?? 0
-            );
+            precioVariante = Number(block?.variantesPorTalles?.find((v: any) => v.talle === item.size)?.precio ?? producto?.precio ?? 0);
           } else {
-            precioVariante = Number(
-              (producto.variantesPorTalle || []).find((v: any) => v.talle === item.size)?.precio ?? producto?.precio ?? 0
-            );
+            precioVariante = Number((producto.variantesPorTalle || []).find((v: any) => v.talle === item.size)?.precio ?? producto?.precio ?? 0);
           }
         }
 
-        // 4.1) crear ítem (agregar colegio si existe)
         const itemPayload = {
           data: {
             cantidad: Number(item.quantity),
-            talle: String(item.size),
-            ...(item.colegio ? { colegio: String(item.colegio) } : {}), // ⬅️ NUEVO
-
+            ...(item.size ? { talle: String(item.size) } : {}),
+            ...(item.colegio ? { colegio: String(item.colegio) } : {}),
             precio_unitario: Number(precioVariante),
             importe: Number(precioVariante) * Number(item.quantity),
-
-            // Relaciones por documentId (Strapi v5)
             fortela_producto: { connect: [{ documentId: producto.documentId }] },
             fortela_orden: { connect: [{ documentId: ordenDocId }] },
           },
         };
 
-
-        const itemRes = await fetch(
-          "https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(itemPayload),
-          }
-        );
+        const itemRes = await fetch("https://vps-4937880-x.dattaweb.com/api/fortela-items-comprados", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(itemPayload),
+        });
         const itemJson = await itemRes.json();
         if (!itemRes.ok) {
-          // Logs a consola igualmente
           console.error("🧾 Error ítem (payload):", JSON.stringify(itemPayload, null, 2));
           console.error("🧾 Error ítem (Strapi):", itemJson?.error || itemJson);
-
-          await showDebugModal(
-            `Error al crear ítem: ${item.name}`,
-            itemPayload,
-            itemJson,
-            {
-              endpoint: "POST /api/fortela-items-comprados",
-              productoIdConectado: Number(producto.id),
-              ordenIdConectado: Number(ordenId),
-              itemDocumentId: item.documentId,
-              itemColegio: item.colegio ?? null,
-              itemTalle: item.size ?? null,
-              itemCantidad: Number(item.quantity),
-            }
-          );
-
-          throw new Error(
-            `Error al crear item de orden para ${item.name} → ${itemJson?.error?.message ?? "ver modal"}`
-          );
+          await showDebugModal(`Error al crear ítem: ${item.name}`, itemPayload, itemJson, {
+            endpoint: "POST /api/fortela-items-comprados",
+            productoIdConectado: Number(producto.id),
+            ordenIdConectado: Number(ordenId),
+            itemDocumentId: item.documentId,
+            itemColegio: item.colegio ?? null,
+            itemTalle: item.size ?? null,
+            itemCantidad: Number(item.quantity),
+          });
+          throw new Error(`Error al crear item de orden para ${item.name} → ${itemJson?.error?.message ?? "ver modal"}`);
         }
 
+        // Actualizar stock (no aplica a básicos)
+        if (!isBasic) {
+          let dataPut: any = {};
 
-        // 4.2) actualizar stock en el producto
-        let dataPut: any = {};
-
-        if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
-          const nuevasVpc = producto.variantesPorColegio.map((c: any) => {
-            if (c.colegio !== item.colegio) {
-              // copiar tal cual
-              return {
-                colegio: c.colegio,
-                variantesPorTalles: (c.variantesPorTalles || []).map((v: any) => ({
-                  talle: v.talle,
-                  cantidad: Number(v.cantidad ?? 0),
-                  precio: v.precio,
-                })),
-              };
-            }
-            // descontar en el talle elegido
-            return {
+          if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
+            const nuevasVpc = producto.variantesPorColegio.map((c: any) => ({
               colegio: c.colegio,
               variantesPorTalles: (c.variantesPorTalles || []).map((v: any) => ({
                 talle: v.talle,
-                cantidad:
-                  v.talle === item.size
-                    ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
-                    : Number(v.cantidad ?? 0),
+                cantidad: c.colegio === item.colegio && v.talle === item.size
+                  ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
+                  : Number(v.cantidad ?? 0),
                 precio: v.precio,
               })),
-            };
-          });
-
-          const nuevoTotal = nuevasVpc
-            .flatMap((c: any) => c.variantesPorTalles)
-            .reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
-
-          // ✅ Actualizar cache local antes del PUT (evita pisar descuentos previos del mismo producto)
-          productosByDoc[item.documentId] = {
-            ...producto,
-            variantesPorColegio: nuevasVpc,
-            stock: nuevoTotal,
-          };
-
-          dataPut = { variantesPorColegio: nuevasVpc, stock: nuevoTotal };
-        } else {
-          const nuevasVpt = (producto.variantesPorTalle || []).map((v: any) => ({
-            talle: v.talle,
-            cantidad:
-              v.talle === item.size
+            }));
+            const nuevoTotal = nuevasVpc.flatMap((c: any) => c.variantesPorTalles).reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
+            productosByDoc[item.documentId] = { ...producto, variantesPorColegio: nuevasVpc, stock: nuevoTotal };
+            dataPut = { variantesPorColegio: nuevasVpc, stock: nuevoTotal };
+          } else {
+            const nuevasVpt = (producto.variantesPorTalle || []).map((v: any) => ({
+              talle: v.talle,
+              cantidad: v.talle === item.size
                 ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
                 : Number(v.cantidad ?? 0),
-            precio: v.precio,
-          }));
+              precio: v.precio,
+            }));
+            const nuevoTotal = nuevasVpt.reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
+            productosByDoc[item.documentId] = { ...producto, variantesPorTalle: nuevasVpt, stock: nuevoTotal };
+            dataPut = { variantesPorTalle: nuevasVpt, stock: nuevoTotal };
+          }
 
-          const nuevoTotal = nuevasVpt.reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
-
-          // ✅ Actualizar cache local antes del PUT (evita pisar descuentos previos del mismo producto)
-          productosByDoc[item.documentId] = {
-            ...producto,
-            variantesPorTalle: nuevasVpt,
-            stock: nuevoTotal,
-          };
-
-          dataPut = { variantesPorTalle: nuevasVpt, stock: nuevoTotal };
-        }
-
-        const putRes = await fetch(
-          `https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`,
-          {
+          const putRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ data: dataPut }),
-          }
-        );
-        const putJson = await putRes.json();
-        if (!putRes.ok) {
-          console.error("📉 Error PUT stock (request):", { data: dataPut });
-          console.error("📉 Error PUT stock (response):", putJson);
-
-          await showDebugModal(
-            `Error al actualizar stock de ${item.name}`,
-            { data: dataPut },
-            putJson,
-            {
+          });
+          const putJson = await putRes.json();
+          if (!putRes.ok) {
+            console.error("📉 Error PUT stock (request):", { data: dataPut });
+            console.error("📉 Error PUT stock (response):", putJson);
+            await showDebugModal(`Error al actualizar stock de ${item.name}`, { data: dataPut }, putJson, {
               endpoint: `PUT /api/productos/${item.documentId} (por documentId)`,
               colegio: item.colegio ?? null,
               talle: item.size ?? null,
               cantidadVendida: Number(item.quantity),
-            }
-          );
-
-          throw new Error(`Error al actualizar stock de ${item.name}`);
+            });
+            throw new Error(`Error al actualizar stock de ${item.name}`);
+          }
         }
-
-
       }
 
-      // 5) Guardar datos de ticket (agrego colegio para claridad)
-      const itemsForTicket = cart.map((i) => ({
+      // Guardar ticket
+      const itemsForTicket = cart.map(i => ({
         descripcion: i.name,
-        colegio: i.colegio ?? null, // opcional en ticket
-        talle: i.size!, // ya validado
+        colegio: i.colegio ?? null,
+        talle: i.size ?? null,
         cantidad: Number(i.quantity),
         precio: Number(i.price),
         importe: Number(i.price) * Number(i.quantity),
@@ -775,271 +653,348 @@ export default function POSPage() {
 
       if (typeof window !== "undefined") {
         sessionStorage.setItem("posTicketItems", JSON.stringify(itemsForTicket));
-        sessionStorage.setItem(
-          "posTicketMeta",
-          JSON.stringify({
-            ordenId: ordenDocId || String(ordenId),
-            total,
-          })
-        );
+        sessionStorage.setItem("posTicketMeta", JSON.stringify({ ordenId: ordenDocId || String(ordenId), total }));
       }
 
-      // 6) Éxito
       clearCart();
-      await Swal.fire({
-        icon: "success",
-        title: "¡Venta creada correctamente!",
-        text: `Orden: ORD-${ordenId}`,
-        timer: 1200,
-        showConfirmButton: false,
-      });
-
-      const url = `/pos/venta-completada?ordenId=${encodeURIComponent(ordenDocId)}&total=${encodeURIComponent(total)}`;
-      window.location.assign(url);
+      await Swal.fire({ icon: "success", title: "¡Venta creada correctamente!", text: `Orden: ORD-${ordenId}`, timer: 1200, showConfirmButton: false });
+      window.location.assign(`/pos/venta-completada?ordenId=${encodeURIComponent(ordenDocId)}&total=${encodeURIComponent(total)}`);
     } catch (error) {
       console.error("❌ Checkout error:", error);
-      toast({
-        variant: "destructive",
-        title: "Error al generar orden",
-        description: "Ocurrió un error al finalizar la venta.",
-      });
+      toast({ variant: "destructive", title: "Error al generar orden", description: "Ocurrió un error al finalizar la venta." });
     } finally {
       setIsCheckingOut(false);
     }
   };
 
-
-
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Venta por Mostrador</h1>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Escanear Productos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isScanning ? (
-                <div className="space-y-4">
-                  <QRScanner onScan={handleScan} />
-                  <Button variant="outline" onClick={() => setIsScanning(false)} className="w-full">Cancelar</Button>
-                </div>
-              ) : (
-                <Button onClick={() => setIsScanning(true)} className="w-full" size="lg">
-                  <Scan className="mr-2 h-4 w-4" /> Comenzar Escaneo
-                </Button>
+    <div className="min-h-screen bg-background">
+      {/* Header sticky */}
+      <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-screen-xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+          <h1 className="text-base font-semibold tracking-tight">Venta por mostrador</h1>
+          {cart.length > 0 && (
+            <div className="flex items-center gap-2">
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                {cartCount} {cartCount === 1 ? "artículo" : "artículos"}
+              </span>
+              <span className="font-semibold text-sm tabular-nums">
+                ${total.toLocaleString("es-AR")}
+              </span>
+              {hasPending && (
+                <Badge variant="outline" className="text-xs border-amber-400 text-amber-600 gap-1 hidden sm:flex">
+                  <AlertCircle className="h-3 w-3" />
+                  Talles pendientes
+                </Badge>
               )}
-
-              {cart.length > 0 && (
-                <div className="mt-6 space-y-3">
-                  <h3 className="font-medium">Carrito</h3>
-                  {cart.map((item, index) => (
-                    <div key={`${item.id}-${item.size ?? "pendiente"}-${index}`} className="space-y-2">
-                      {/* DONDE renderizás cada item del carrito */}
-                      <POSCartItem
-                        item={item as any}
-                        onIncrement={() => updateQuantity(item.id, item.size, 1, item.colegio)}
-                        onDecrement={() => updateQuantity(item.id, item.size, -1, item.colegio)}
-                        onRemove={() => removeItem(item.id, item.size, item.colegio)}
-                        inlineSizeSelector={false}
-                      />
-
-
-
-                      {/* Botón para abrir el selector múltiple de talles */}
-                      {(item.variantes?.length || (item.variantesPorColegio?.length && item.colegio)) ? (
-                        <div className="flex justify-start pl-2">
-                          <Button variant="outline" size="sm" onClick={() => openSizePicker(item)}>
-                            Elegir / cambiar talles
-                          </Button>
-                        </div>
-                      ) : null}
-
-
-                    </div>
-                  ))}
-
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex justify-between items-center">
-                <span>Resumen</span>
-                {cart.length > 0 && <Button variant="outline" size="sm" onClick={clearCart}><Trash2 className="h-4 w-4 mr-1" /> Vaciar</Button>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {cart.length === 0 ? (
-                <div className="text-center py-8">
-                  <ShoppingCart className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">No hay productos escaneados</p>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-3 mb-4">
-                    <div className="flex justify-between"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-                    <Separator />
-                    <div className="flex justify-between font-semibold text-lg">
-                      <span>Total</span><span>${total.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <Button
-                    className="w-full mb-3"
-                    size="lg"
-                    onClick={handleCheckout}
-                    disabled={isCheckingOut || hasPending}
-                    title={hasPending ? "Asigná los talles pendientes antes de continuar" : undefined}
-                  >
-                    {isCheckingOut ? "Procesando..." : hasPending ? "Asigná talles pendientes" : "Confirmar Venta"}
-                    {!isCheckingOut && !hasPending && <CreditCard className="ml-2 h-4 w-4" />}
-                  </Button>
-
-
-                </>
-              )}
-            </CardContent>
-          </Card>
+            </div>
+          )}
         </div>
       </div>
 
-      {sizePickerItem && (
-        <Dialog open={!!sizePickerItem} onOpenChange={(o) => !o && setSizePickerItem(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Elegir talles para {sizePickerItem.name}</DialogTitle>
-            </DialogHeader>
+      {/* Layout principal */}
+      <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6">
 
-            <div className="space-y-3 max-h-[60vh] overflow-auto pr-1">
-              {sizePickerItem.variantes?.map((v) => {
-                const actual = cartSizeSelections[v.talle] ?? 0;
-                const max = v.cantidad ?? 0;
-                return (
-                  <div key={v.talle} className="flex items-center justify-between rounded-lg border p-3">
-                    <div className="flex flex-col">
-                      <span className="font-medium capitalize">
-                        Talle {v.talle}{typeof v.precio === "number" ? ` • $${v.precio.toFixed(2)}` : ""}
-                      </span>
-                      <span className="text-sm text-muted-foreground">Stock: {max}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="icon" onClick={() => decCartPicker(v.talle)} disabled={actual <= 0}>-</Button>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        className="w-16 text-center rounded-md border px-2 py-1 bg-background"
-                        min={0}
-                        max={max}
-                        value={actual}
-                        onChange={(e) => setCartPickerQty(v.talle, Number(e.target.value), max)}
-                      />
-                      <Button variant="outline" size="icon" onClick={() => incCartPicker(v.talle, max)} disabled={actual >= max}>+</Button>
-                    </div>
-                  </div>
-                );
-              })}
+          {/* Izquierda: selector de productos */}
+          <div className="flex flex-col gap-4">
+            {/* Tabs */}
+            <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit">
+              <button
+                onClick={() => setActiveTab("table")}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  activeTab === "table"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Table2 className="h-4 w-4" />
+                Catálogo
+              </button>
+              <button
+                onClick={() => { setActiveTab("scan"); setIsScanning(false); }}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  activeTab === "scan"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Scan className="h-4 w-4" />
+                Escanear QR
+              </button>
             </div>
 
-            <Button onClick={applyCartSizeSelections} className="w-full mt-2">
-              Aplicar
-            </Button>
-          </DialogContent>
-        </Dialog>
-      )}
+            {activeTab === "table" && (
+              <ProductTableSelector
+                productos={productos as any}
+                onSelect={handleSelectFromTable}
+              />
+            )}
 
+            {activeTab === "scan" && (
+              <div className="rounded-xl border bg-card p-6">
+                {isScanning ? (
+                  <div className="space-y-4">
+                    <QRScanner onScan={handleScan} />
+                    <Button variant="outline" onClick={() => setIsScanning(false)} className="w-full">
+                      Cancelar
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-4 py-8">
+                    <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Scan className="h-8 w-8 text-primary" />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium">Escaneá el código QR del producto</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Usá la cámara para agregar productos al carrito
+                      </p>
+                    </div>
+                    <Button onClick={() => setIsScanning(true)} size="lg" className="mt-2 gap-2">
+                      <Scan className="h-4 w-4" />
+                      Iniciar escaneo
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
-      <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent>
+          {/* Derecha: carrito */}
+          <div className="flex flex-col gap-4">
+            <div className="rounded-xl border bg-card overflow-hidden sticky top-[72px]">
+              {/* Cart header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium text-sm">Carrito</span>
+                  {cart.length > 0 && (
+                    <Badge variant="secondary" className="text-xs h-5 px-1.5">
+                      {cart.length}
+                    </Badge>
+                  )}
+                </div>
+                {cart.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearCart}
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive gap-1"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Vaciar
+                  </Button>
+                )}
+              </div>
+
+              {/* Cart items */}
+              <div className="max-h-[50vh] xl:max-h-[calc(100vh-340px)] overflow-y-auto">
+                {cart.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 px-4">
+                    <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                      <ShoppingCart className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm text-muted-foreground text-center">
+                      El carrito está vacío.<br />
+                      Elegí un producto del catálogo.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 flex flex-col gap-2">
+                    {cart.map((item, index) => (
+                      <div
+                        key={`${item.documentId}-${item.size ?? "x"}-${item.colegio ?? "x"}-${index}`}
+                        className="flex flex-col gap-1"
+                      >
+                        <POSCartItem
+                          item={item as any}
+                          onIncrement={() => updateQuantity(item.id, item.size, 1, item.colegio)}
+                          onDecrement={() => updateQuantity(item.id, item.size, -1, item.colegio)}
+                          onRemove={() => removeItem(item.id, item.size, item.colegio)}
+                          inlineSizeSelector={false}
+                        />
+                        {(item.variantes?.length || (item.variantesPorColegio?.length && item.colegio)) ? (
+                          <button
+                            onClick={() => openSizePicker(item)}
+                            className="ml-2 text-xs text-primary hover:underline flex items-center gap-1 w-fit"
+                          >
+                            {item.pendingSize ? "Elegir talle" : "Cambiar talles"}
+                            <ChevronRight className="h-3 w-3" />
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Cart footer */}
+              {cart.length > 0 && (
+                <div className="border-t px-4 py-3 space-y-3">
+                  {hasPending && (
+                    <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span>Hay productos con talle pendiente. Asignalo antes de confirmar.</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="tabular-nums">${subtotal.toLocaleString("es-AR")}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">Total</span>
+                    <span className="text-xl font-bold tabular-nums">${total.toLocaleString("es-AR")}</span>
+                  </div>
+                  <Button
+                    className="w-full gap-2"
+                    size="lg"
+                    onClick={handleCheckout}
+                    disabled={isCheckingOut || hasPending}
+                  >
+                    {isCheckingOut ? (
+                      <>Procesando...</>
+                    ) : (
+                      <>
+                        <CreditCard className="h-4 w-4" />
+                        Confirmar venta
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Dialog: size picker desde carrito ─── */}
+      <Dialog open={!!sizePickerItem} onOpenChange={(o) => !o && setSizePickerItem(null)}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Seleccioná talles y cantidades</DialogTitle>
+            <DialogTitle className="text-base">
+              {sizePickerItem?.pendingSize ? "Elegir talle" : "Cambiar talles"} — {sizePickerItem?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-auto">
+            {sizePickerItem?.variantes?.map((v) => {
+              const actual = cartSizeSelections[v.talle] ?? 0;
+              const max = v.cantidad ?? 0;
+              return (
+                <div key={v.talle} className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <span className="font-medium text-sm capitalize">Talle {v.talle}</span>
+                    {typeof v.precio === "number" && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        ${v.precio.toLocaleString("es-AR")}
+                      </span>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">Stock: {max}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => decCartPicker(v.talle)} disabled={actual <= 0}>-</Button>
+                    <input
+                      type="number" inputMode="numeric"
+                      className="w-12 text-center rounded-md border px-1 py-1 text-sm bg-background"
+                      min={0} max={max} value={actual}
+                      onChange={e => setCartPickerQty(v.talle, Number(e.target.value), max)}
+                    />
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => incCartPicker(v.talle, max)} disabled={actual >= max}>+</Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <Button onClick={applyCartSizeSelections} className="w-full">Aplicar</Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Dialog: selección de talles + colegio ─── */}
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              {productoActual?.nombre}
+            </DialogTitle>
           </DialogHeader>
 
-
-
-          {productoActual?.variantesPorColegio?.length ? (
-            <div className="mb-3">
-              <label className="text-sm text-muted-foreground mb-1 block">Colegio</label>
-              <select
-                className="border rounded-md px-2 py-1 bg-background text-sm w-full"
-                value={selectedColegio}
-                onChange={(e) => onChangeColegioEnModal(e.target.value)}
-              >
+          {/* Selector de colegio (múltiples) */}
+          {productoActual?.variantesPorColegio?.length > 1 && (
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block font-medium">Colegio</label>
+              <div className="flex flex-wrap gap-2">
                 {productoActual.variantesPorColegio.map((c: any) => (
-                  <option key={c.colegio} value={c.colegio}>{c.colegio}</option>
+                  <button
+                    key={c.colegio}
+                    onClick={() => onChangeColegioEnModal(c.colegio)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                      selectedColegio === c.colegio
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    {c.colegio}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
-          ) : null}
+          )}
 
+          {/* Label colegio único */}
+          {productoActual?.variantesPorColegio?.length === 1 && (
+            <p className="text-xs text-muted-foreground">
+              Colegio: <span className="font-medium text-foreground">{productoActual.variantesPorColegio[0].colegio}</span>
+            </p>
+          )}
 
-          <div className="space-y-3 max-h-[60vh] overflow-auto pr-1">
+          {/* Talles */}
+          <div className="flex flex-col gap-2 max-h-[50vh] overflow-auto">
             {variantes.map((v: any) => {
               const actual = selecciones[v.talle] ?? 0;
               const max = v.cantidad ?? 0;
               return (
-                <div
-                  key={v.talle}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div className="flex flex-col">
-                    <span className="font-medium capitalize">
-                      Talle {v.talle} {typeof v.precio === "number" ? `• $${v.precio.toFixed(2)}` : ""}
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      Stock: {max} disponible{max !== 1 ? "s" : ""}
-                    </span>
+                <div key={v.talle} className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <span className="font-medium text-sm capitalize">Talle {v.talle}</span>
+                    {typeof v.precio === "number" && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        ${v.precio.toLocaleString("es-AR")}
+                      </span>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {max > 0 ? `${max} disponible${max !== 1 ? "s" : ""}` : "Sin stock"}
+                    </p>
                   </div>
-
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => decTalle(v.talle)}
-                      disabled={actual <= 0}
-                      aria-label={`Quitar talle ${v.talle}`}
-                    >
-                      -
-                    </Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => decTalle(v.talle)} disabled={actual <= 0 || max === 0}>-</Button>
                     <input
-                      inputMode="numeric"
-                      type="number"
-                      className="w-16 text-center rounded-md border px-2 py-1 bg-background"
-                      min={0}
-                      max={max}
-                      value={actual}
-                      onChange={(e) => setCantidadTalle(v.talle, Number(e.target.value), max)}
+                      type="number" inputMode="numeric"
+                      className="w-12 text-center rounded-md border px-1 py-1 text-sm bg-background"
+                      min={0} max={max} value={actual}
+                      onChange={e => setCantidadTalle(v.talle, Number(e.target.value), max)}
+                      disabled={max === 0}
                     />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => incTalle(v.talle, max)}
-                      disabled={actual >= max}
-                      aria-label={`Agregar talle ${v.talle}`}
-                    >
-                      +
-                    </Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => incTalle(v.talle, max)} disabled={actual >= max || max === 0}>+</Button>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <Button onClick={confirmarSelecciones} className="w-full mt-4">
-            Confirmar selección
-          </Button>
-          <Button variant="ghost" onClick={continuarSinTalle} className="w-full">
-            Continuar sin talle (elegir luego)
-          </Button>
+          <div className="flex flex-col gap-2 mt-1">
+            <Button onClick={confirmarSelecciones} disabled={totalSeleccionado === 0} className="w-full">
+              {totalSeleccionado > 0 ? `Agregar ${totalSeleccionado} al carrito` : "Seleccioná un talle"}
+            </Button>
+            <Button variant="ghost" onClick={continuarSinTalle} className="w-full text-sm">
+              Continuar sin talle (elegir luego)
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
-
-    </div >
+    </div>
   );
 }
