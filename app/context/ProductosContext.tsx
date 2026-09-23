@@ -1,122 +1,104 @@
-'use client'
+"use client";
 
-import { createContext, useContext, useEffect, useState } from "react"
-import axios from "axios"
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 
-interface VariantePorTalle {
-  id: number
-  talle: string
-  cantidad: number
-  precio: number
+const STRAPI_URL = "https://vps-4937880-x.dattaweb.com";
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+export interface VarianteTalle {
+  talle: string;
+  cantidad: number;
+  precio?: number;
 }
 
-interface VariantesPorColegio {
-  colegio?: string | null
-  // En tu Strapi quedó "variantesPorTalles" (con s). Usamos ambos por compat.
-  variantesPorTalles?: VariantePorTalle[]
-  variantesPorTalle?: VariantePorTalle[]
+export interface ColegioBlock {
+  colegio: string;
+  variantesPorTalles: VarianteTalle[];
 }
 
-interface Producto {
-  id: number
-  documentId: string
-  nombre: string
-  descripcion?: string
-  precio: number
-  stock: number
-  genero: string
-  qr_code?: string
-  colegio?: string[]
-  nivel_educativo?: string[]
-  // Viejo (global, sin colegio)
-  variantesPorTalle?: VariantePorTalle[]
-  // Nuevo (por colegio)
-  variantesPorColegio?: VariantesPorColegio[]
+export interface VarianteBasico {
+  color?: string;
+  detalle?: string;
+  talle?: string;
+  cantidad: number;
+  precio?: number;
 }
 
-const ProductosContext = createContext<Producto[]>([])
+export interface Producto {
+  id: number;
+  documentId: string;
+  nombre: string;
+  precio: number;
+  descripcion?: string;
+  genero?: string;
+  nivel?: string;
+  qr_code?: string;
+  stock?: number;
+  variantesPorColegio?: ColegioBlock[];
+  variantesPorTalle?: VarianteTalle[];
+  variantesBasico?: VarianteBasico[];
+}
 
-export const ProductosProvider = ({ children }: { children: React.ReactNode }) => {
-  const [productos, setProductos] = useState<Producto[]>([])
+// ─── Context ────────────────────────────────────────────────────────────────────
+
+const ProductosContext = createContext<Producto[]>([]);
+
+export function ProductosProvider({ children }: { children: ReactNode }) {
+  const [productos, setProductos] = useState<Producto[]>([]);
 
   useEffect(() => {
-    const fetchAll = async () => {
-      const base = "https://vps-4937880-x.dattaweb.com/api/productos"
-      const pageSize = 200
-      let page = 1
-      let all: any[] = []
+    const fetchProductos = async () => {
+      try {
+        const res = await fetch(
+          `${STRAPI_URL}/api/productos?pagination[limit]=500` +
+          `&populate[variantesPorColegio][populate]=*` +
+          `&populate[variantesPorTalle]=*` +
+          `&populate[variantesBasico]=*`
+        );
+        const data = await res.json();
+        const raw: any[] = data?.data ?? [];
 
-      while (true) {
-        // 👇 Populate dirigido para traer los talles dentro de cada colegio
-        const { data } = await axios.get(
-          `${base}?pagination[page]=${page}&pagination[pageSize]=${pageSize}`
-          + `&populate[variantesPorColegio][populate]=*`
-          // si necesitás imagen u otros, agregalos con otro populate=...
-        )
-        all = all.concat(data.data)
-        const { pageCount } = data.meta.pagination
-        if (page >= pageCount) break
-        page++
-      }
-
-      const processed = all.map((item: any) => {
-        // Normalizamos: algunos docs pueden venir con nombres viejos o valores no array
-        const rawVpc =
-          item.variantesPorColegio ?? item.VariantesPorColegio ?? null
-        const vpc: any[] = Array.isArray(rawVpc) ? rawVpc : (rawVpc ? [rawVpc] : [])
-
-        const vptGlobal = item.variantesPorTalle ?? item.variantesPorTalles ?? []
-
-        let totalStock = 0
-
-        // Sumar stock desde el esquema nuevo (colegio -> talles)
-        const variantesPorColegio: VariantesPorColegio[] = vpc.map((row: any) => {
-          const nested = row.variantesPorTalle ?? row.variantesPorTalles ?? []
-          const talles: VariantePorTalle[] = (nested || []).map((v: any) => {
-            totalStock += v.cantidad || 0
-            return {
-              id: v.id,
-              talle: v.talle,
-              cantidad: v.cantidad,
-              precio: v.precio,
-            }
-          })
+        const processed: Producto[] = raw.map((item: any) => {
+          const attrs = item.attributes ?? item;
           return {
-            colegio: row.colegio ?? null,
-            variantesPorTalles: talles,   // guardamos en el nombre “actual”
-          }
-        })
+            id: item.id,
+            documentId: item.documentId ?? attrs.documentId,
+            nombre: attrs.nombre ?? "",
+            precio: attrs.precio ?? 0,
+            descripcion: attrs.descripcion ?? "",
+            genero: attrs.genero ?? undefined,
+            nivel: attrs.nivel ?? undefined,
+            qr_code: attrs.qr_code ?? undefined,
+            stock: attrs.stock ?? 0,
+            variantesPorColegio: Array.isArray(attrs.variantesPorColegio)
+              ? attrs.variantesPorColegio
+              : [],
+            variantesPorTalle: Array.isArray(attrs.variantesPorTalle)
+              ? attrs.variantesPorTalle
+              : [],
+            variantesBasico: Array.isArray(attrs.variantesBasico)
+              ? attrs.variantesBasico
+              : [],
+          };
+        });
 
-        // Compat: si no hay colegios, calculamos el total con el array global de talles
-        if (!vpc.length && vptGlobal.length) {
-          totalStock = vptGlobal.reduce((s: number, v: any) => s + (v.cantidad || 0), 0)
-        }
+        setProductos(processed);
+      } catch (err) {
+        console.error("Error fetching productos:", err);
+      }
+    };
 
-        return {
-          id: item.id,
-          documentId: item.documentId,
-          nombre: item.nombre,
-          descripcion: item.descripcion,
-          precio: item.precio,
-          stock: totalStock,               // ← total del producto (1 solo QR)
-          genero: item.genero,
-          qr_code: item.qr_code,
-          colegio: item.colegio,
-          nivel_educativo: item.nivel_educativo,
-          variantesPorTalle: (vptGlobal || []).map((v: any) => ({
-            id: v.id, talle: v.talle, cantidad: v.cantidad, precio: v.precio
-          })),
-          variantesPorColegio,
-        } as Producto
-      })
+    fetchProductos();
+  }, []);
 
-      setProductos(processed)
-    }
-
-    fetchAll().catch((err) => console.error("Error cargando productos", err))
-  }, [productos])
-
-  return <ProductosContext.Provider value={productos}>{children}</ProductosContext.Provider>
+  return (
+    <ProductosContext.Provider value={productos}>
+      {children}
+    </ProductosContext.Provider>
+  );
 }
 
-export const useProductos = () => useContext(ProductosContext)
+export function useProductos(): Producto[] {
+  return useContext(ProductosContext);
+}

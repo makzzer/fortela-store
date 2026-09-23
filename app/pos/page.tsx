@@ -22,6 +22,7 @@ const QRScanner = dynamic(() => import("@/components/admin/qr-scanner"), { ssr: 
 
 interface VarianteTalle { talle: string; cantidad: number; precio?: number }
 interface ColegioBlock { colegio: string; variantesPorTalles: VarianteTalle[] }
+interface VarianteBasico { color?: string; detalle?: string; talle?: string; cantidad: number; precio?: number }
 
 interface POSItem {
   id: string;
@@ -31,20 +32,26 @@ interface POSItem {
   quantity: number;
   size?: string;
   colegio?: string;
+  color?: string;         // ← para variantesBasico
+  detalle?: string;       // ← para variantesBasico
   qr_code: string;
   stock: number;
   totalStock: number;
   pendingSize?: boolean;
   variantes?: VarianteTalle[];
   variantesPorColegio?: ColegioBlock[];
+  variantesBasico?: VarianteBasico[];
 }
 
 type ActiveTab = "table" | "scan";
 
+// Colores predefinidos
+const COLORES_PREDEFINIDOS = ["azul", "rojo", "verde", "gris"];
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function POSPage() {
-  const  productos  = useProductos();
+  const productos = useProductos();           // ← devuelve Producto[] directamente
   const { toast } = useToast();
   const router = useRouter();
 
@@ -54,12 +61,19 @@ export default function POSPage() {
   const [cart, setCart] = useState<POSItem[]>([]);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
+  // Modal talle/colegio
   const [showModal, setShowModal] = useState(false);
   const [productoActual, setProductoActual] = useState<any | null>(null);
   const [variantes, setVariantes] = useState<VarianteTalle[]>([]);
   const [selectedColegio, setSelectedColegio] = useState<string>("");
   const [selecciones, setSelecciones] = useState<Record<string, number>>({});
 
+  // Modal variantesBasico (color/detalle)
+  const [showBasicoModal, setShowBasicoModal] = useState(false);
+  const [productoBasicoActual, setProductoBasicoActual] = useState<any | null>(null);
+  const [seleccionesBasico, setSeleccionesBasico] = useState<Record<string, number>>({});
+
+  // Cart size picker
   const [sizePickerItem, setSizePickerItem] = useState<POSItem | null>(null);
   const [cartSizeSelections, setCartSizeSelections] = useState<Record<string, number>>({});
 
@@ -77,8 +91,9 @@ export default function POSPage() {
     const legacy: VarianteTalle[] = Array.isArray(item.variantesPorTalle)
       ? item.variantesPorTalle
       : Array.isArray(item.variantes) ? item.variantes : [];
+    const basico: VarianteBasico[] = Array.isArray(item.variantesBasico) ? item.variantesBasico : [];
 
-    setProductoActual({ ...item, totalStock: item.stock, variantesPorColegio: vpc, variantes: legacy });
+    setProductoActual({ ...item, totalStock: item.stock, variantesPorColegio: vpc, variantes: legacy, variantesBasico: basico });
 
     if (vpc.length > 0) {
       const first = vpc[0];
@@ -91,6 +106,16 @@ export default function POSPage() {
       setVariantes(legacy);
       setSelecciones(Object.fromEntries(legacy.map((v: any) => [v.talle, 0])));
       setShowModal(true);
+    } else if (basico.length > 0) {
+      // Producto básico con variantes de color/detalle → abrir modal de color
+      setProductoBasicoActual({ ...item, variantesBasico: basico });
+      const initSel: Record<string, number> = {};
+      basico.forEach((v: VarianteBasico) => {
+        const key = v.color || v.detalle || "";
+        initSel[key] = 0;
+      });
+      setSeleccionesBasico(initSel);
+      setShowBasicoModal(true);
     } else {
       // Producto básico sin variantes → agregar directo, acumulable
       const basicItem: POSItem = {
@@ -104,10 +129,11 @@ export default function POSPage() {
         totalStock: item.stock ?? 999,
         variantes: [],
         variantesPorColegio: [],
+        variantesBasico: [],
       };
       setCart(prev => {
         const existing = prev.find(
-          c => c.qr_code === basicItem.qr_code && !c.size && !c.colegio && !c.pendingSize
+          c => c.qr_code === basicItem.qr_code && !c.size && !c.colegio && !c.color && !c.pendingSize
         );
         if (existing) {
           return prev.map(c => c === existing ? { ...c, quantity: c.quantity + 1 } : c);
@@ -124,7 +150,7 @@ export default function POSPage() {
     setIsScanning(false);
     try {
       const res = await fetch(
-        `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${code}&populate[variantesPorColegio][populate]=*&populate=variantesPorTalle`
+        `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${code}&populate[variantesPorColegio][populate]=*&populate[variantesPorTalle]=*&populate[variantesBasico]=*`
       );
       const data = await res.json();
       const item = data?.data?.[0];
@@ -209,6 +235,7 @@ export default function POSPage() {
           totalStock: productoActual.totalStock || 0,
           variantes: productoActual.variantes || [],
           variantesPorColegio: productoActual.variantesPorColegio || [],
+          variantesBasico: [],
         };
 
         if (same) {
@@ -255,12 +282,87 @@ export default function POSPage() {
       colegio: productoActual.variantesPorColegio?.length ? selectedColegio : undefined,
       variantes: tallesParaItem,
       variantesPorColegio: productoActual.variantesPorColegio || [],
+      variantesBasico: [],
     };
 
     setCart(prev => [...prev, productPendiente]);
     toast({ title: "Producto agregado", description: `${productPendiente.name} (talle pendiente)` });
     setShowModal(false);
     setSelecciones({});
+  };
+
+  // ─── Modal: variantesBasico (color/detalle) ───────────────────────────────
+
+  const confirmarBasico = () => {
+    if (!productoBasicoActual) return;
+    let agregoAlgo = false;
+
+    setCart(prev => {
+      let updated = [...prev];
+      const basico: VarianteBasico[] = productoBasicoActual.variantesBasico || [];
+
+      for (const v of basico) {
+        const base = v.color || v.detalle || "";
+        const key = v.talle ? `${base}__${v.talle}` : base;
+        const qty = seleccionesBasico[key] ?? 0;
+        if (qty <= 0) continue;
+
+        const disponible = v.cantidad ?? 0;
+        const price = typeof v.precio === "number" ? v.precio : (productoBasicoActual.precio ?? 0);
+
+        const same = updated.find(i =>
+          i.qr_code === productoBasicoActual.documentId &&
+          (i.color ?? "") === (v.color ?? "") &&
+          (i.detalle ?? "") === (v.detalle ?? "") &&
+          (i.size ?? "") === (v.talle ?? "")
+        );
+        const yaAgregado = same ? same.quantity : 0;
+
+        if (qty + yaAgregado > disponible) {
+          const displayKey = [v.color || v.detalle, v.talle].filter(Boolean).join(" / ") || key;
+          toast({
+            variant: "destructive",
+            title: "Stock insuficiente",
+            description: `${displayKey}: pediste ${qty + yaAgregado} y hay ${disponible}.`
+          });
+          continue;
+        }
+
+        const displayName = [v.color || v.detalle, v.talle].filter(Boolean).join(" / ");
+        const newItem: POSItem = {
+          id: String(productoBasicoActual.id ?? productoBasicoActual.documentId),
+          documentId: productoBasicoActual.documentId,
+          name: `${productoBasicoActual.nombre}${displayName ? ` (${displayName})` : ""}`,
+          price,
+          color: v.color,
+          detalle: v.detalle,
+          size: v.talle,
+          qr_code: productoBasicoActual.documentId,
+          quantity: qty,
+          stock: disponible,
+          totalStock: productoBasicoActual.stock ?? 0,
+          variantes: [],
+          variantesPorColegio: [],
+          variantesBasico: basico,
+        };
+
+        if (same) {
+          updated = updated.map(i => i === same ? { ...i, quantity: i.quantity + qty } : i);
+        } else {
+          updated.push(newItem);
+        }
+        agregoAlgo = true;
+      }
+      return updated;
+    });
+
+    toast({
+      title: agregoAlgo ? "Producto agregado" : "Sin cambios",
+      description: agregoAlgo ? "Se añadió al carrito." : "No seleccionaste cantidad.",
+      variant: agregoAlgo ? "default" : "destructive",
+    });
+    setShowBasicoModal(false);
+    setSeleccionesBasico({});
   };
 
   // ─── Cart size picker ──────────────────────────────────────────────────────
@@ -344,6 +446,7 @@ export default function POSPage() {
               totalStock: sizePickerItem.totalStock,
               variantesPorColegio: sizePickerItem.variantesPorColegio || [],
               variantes: sizePickerItem.variantes || [],
+              variantesBasico: [],
             } as POSItem);
           }
           agregoAlgo = true;
@@ -383,9 +486,14 @@ export default function POSPage() {
 
   // ─── Cart actions ──────────────────────────────────────────────────────────
 
-  const updateQuantity = (id: string, size: string | undefined, amount: number, colegio?: string) => {
+  const updateQuantity = (id: string, size: string | undefined, amount: number, colegio?: string, color?: string) => {
     setCart(prev => prev.map(i => {
-      if (i.id === id && i.size === size && (i.colegio ?? "") === (colegio ?? "")) {
+      if (
+        i.id === id &&
+        i.size === size &&
+        (i.colegio ?? "") === (colegio ?? "") &&
+        (i.color ?? "") === (color ?? "")
+      ) {
         if (size === undefined && !i.pendingSize && (i.variantes?.length || i.variantesPorColegio?.length)) {
           toast({ variant: "destructive", title: "Elegí un talle primero" });
           return i;
@@ -401,8 +509,13 @@ export default function POSPage() {
     }));
   };
 
-  const removeItem = (id: string, size: string | undefined, colegio?: string) => {
-    setCart(prev => prev.filter(i => !(i.id === id && i.size === size && (i.colegio ?? "") === (colegio ?? ""))));
+  const removeItem = (id: string, size: string | undefined, colegio?: string, color?: string) => {
+    setCart(prev => prev.filter(i => !(
+      i.id === id &&
+      i.size === size &&
+      (i.colegio ?? "") === (colegio ?? "") &&
+      (i.color ?? "") === (color ?? "")
+    )));
   };
 
   const clearCart = () => setCart([]);
@@ -418,6 +531,7 @@ export default function POSPage() {
         precio: raw.attributes.precio,
         variantesPorColegio: raw.attributes.variantesPorColegio ?? [],
         variantesPorTalle: raw.attributes.variantesPorTalle ?? [],
+        variantesBasico: raw.attributes.variantesBasico ?? [],
         stock: raw.attributes.stock,
         nombre: raw.attributes.nombre,
       };
@@ -428,6 +542,7 @@ export default function POSPage() {
       precio: raw.precio,
       variantesPorColegio: raw.variantesPorColegio ?? [],
       variantesPorTalle: raw.variantesPorTalle ?? [],
+      variantesBasico: raw.variantesBasico ?? [],
       stock: raw.stock,
       nombre: raw.nombre,
     };
@@ -462,27 +577,13 @@ export default function POSPage() {
       const productosByDoc: Record<string, any> = {};
 
       for (const item of cart) {
-        const isBasic = !item.size && !item.variantes?.length && !item.variantesPorColegio?.length;
+        // isBasicColor = tiene color o detalle (puede tener talle además)
+        const isBasicColor = !!(item.color || item.detalle);
+        const isBasicPlain = !item.size && !item.variantes?.length && !item.variantesPorColegio?.length && !isBasicColor;
 
-        if (isBasic) {
-          const res = await fetch(
-            `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate[variantesPorColegio][populate]=*&populate=variantesPorTalle`
-          );
-          const data = await res.json();
-          const raw = data?.data?.[0];
-          if (!raw) throw new Error(`Producto no encontrado: ${item.documentId}`);
-          productosByDoc[item.documentId] = normalizeProducto(raw);
-          continue;
-        }
-
-        if (!item.size) {
-          await Swal.fire({ icon: "error", title: "Falta talle", text: `El producto ${item.name} no tiene talle asignado.`, confirmButtonText: "Aceptar" });
-          setIsCheckingOut(false);
-          return;
-        }
-
+        // Siempre fetch del producto fresco para tener datos actualizados
         const res = await fetch(
-          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate[variantesPorColegio][populate]=*&populate=variantesPorTalle`
+          `https://vps-4937880-x.dattaweb.com/api/productos?filters[documentId][$eq]=${item.documentId}&populate[variantesPorColegio][populate]=*&populate[variantesPorTalle]=*&populate[variantesBasico]=*`
         );
         const data = await res.json();
         const raw = data?.data?.[0];
@@ -493,6 +594,37 @@ export default function POSPage() {
           throw new Error(`Producto sin id válido: ${item.documentId}`);
         }
         productosByDoc[item.documentId] = producto;
+
+        if (isBasicPlain) continue; // sin stock tracking, skip validación
+
+        if (isBasicColor) {
+          // validar stock de la variante color (matchea color + detalle + talle)
+          const varB = (producto.variantesBasico || []).find(
+            (v: any) =>
+              (v.color ?? "") === (item.color ?? "") &&
+              (v.detalle ?? "") === (item.detalle ?? "") &&
+              (v.talle ?? "") === (item.size ?? "")
+          );
+          const stockDisponible = Number(varB?.cantidad ?? 0);
+          if (item.quantity > stockDisponible) {
+            await Swal.fire({
+              icon: "error",
+              title: "Stock insuficiente",
+              text: `${item.name} tiene solo ${stockDisponible} unidad(es).`,
+              confirmButtonText: "Aceptar"
+            });
+            setIsCheckingOut(false);
+            return;
+          }
+          continue;
+        }
+
+        // Variante con talle
+        if (!item.size) {
+          await Swal.fire({ icon: "error", title: "Falta talle", text: `El producto ${item.name} no tiene talle asignado.`, confirmButtonText: "Aceptar" });
+          setIsCheckingOut(false);
+          return;
+        }
 
         let stockDisponible = 0;
         if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
@@ -545,17 +677,10 @@ export default function POSPage() {
       // Crear items + actualizar stock
       for (const item of cart) {
         const producto = productosByDoc[item.documentId];
-        const isBasic = !item.size && !item.variantes?.length && !item.variantesPorColegio?.length;
+        const isBasicColor = !!(item.color || item.detalle);
+        const isBasicPlain = !item.size && !item.variantes?.length && !item.variantesPorColegio?.length && !isBasicColor;
 
         let precioVariante = Number(item.price ?? 0);
-        if (!precioVariante && !isBasic) {
-          if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
-            const block = producto.variantesPorColegio.find((c: any) => c.colegio === item.colegio);
-            precioVariante = Number(block?.variantesPorTalles?.find((v: any) => v.talle === item.size)?.precio ?? producto?.precio ?? 0);
-          } else {
-            precioVariante = Number((producto.variantesPorTalle || []).find((v: any) => v.talle === item.size)?.precio ?? producto?.precio ?? 0);
-          }
-        }
 
         const itemPayload = {
           data: {
@@ -590,54 +715,75 @@ export default function POSPage() {
           throw new Error(`Error al crear item de orden para ${item.name} → ${itemJson?.error?.message ?? "ver modal"}`);
         }
 
-        // Actualizar stock (no aplica a básicos)
-        if (!isBasic) {
-          let dataPut: any = {};
+        // Actualizar stock
+        if (isBasicPlain) {
+          // Sin stock tracking (producto básico puro sin variantes)
+          continue;
+        }
 
-          if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
-            const nuevasVpc = producto.variantesPorColegio.map((c: any) => ({
-              colegio: c.colegio,
-              variantesPorTalles: (c.variantesPorTalles || []).map((v: any) => ({
-                talle: v.talle,
-                cantidad: c.colegio === item.colegio && v.talle === item.size
-                  ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
-                  : Number(v.cantidad ?? 0),
-                precio: v.precio,
-              })),
-            }));
-            const nuevoTotal = nuevasVpc.flatMap((c: any) => c.variantesPorTalles).reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
-            productosByDoc[item.documentId] = { ...producto, variantesPorColegio: nuevasVpc, stock: nuevoTotal };
-            dataPut = { variantesPorColegio: nuevasVpc, stock: nuevoTotal };
-          } else {
-            const nuevasVpt = (producto.variantesPorTalle || []).map((v: any) => ({
+        let dataPut: any = {};
+
+        if (isBasicColor) {
+          // Actualizar variantesBasico (match por color + detalle + talle)
+          const nuevasVb = (producto.variantesBasico || []).map((v: any) => ({
+            color: v.color,
+            detalle: v.detalle,
+            talle: v.talle,
+            cantidad:
+              (v.color ?? "") === (item.color ?? "") &&
+              (v.detalle ?? "") === (item.detalle ?? "") &&
+              (v.talle ?? "") === (item.size ?? "")
+                ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
+                : Number(v.cantidad ?? 0),
+            precio: v.precio,
+          }));
+          const nuevoTotal = nuevasVb.reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
+          productosByDoc[item.documentId] = { ...producto, variantesBasico: nuevasVb, stock: nuevoTotal };
+          dataPut = { variantesBasico: nuevasVb, stock: nuevoTotal };
+        } else if (Array.isArray(producto.variantesPorColegio) && producto.variantesPorColegio.length) {
+          const nuevasVpc = producto.variantesPorColegio.map((c: any) => ({
+            colegio: c.colegio,
+            variantesPorTalles: (c.variantesPorTalles || []).map((v: any) => ({
               talle: v.talle,
-              cantidad: v.talle === item.size
+              cantidad: c.colegio === item.colegio && v.talle === item.size
                 ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
                 : Number(v.cantidad ?? 0),
               precio: v.precio,
-            }));
-            const nuevoTotal = nuevasVpt.reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
-            productosByDoc[item.documentId] = { ...producto, variantesPorTalle: nuevasVpt, stock: nuevoTotal };
-            dataPut = { variantesPorTalle: nuevasVpt, stock: nuevoTotal };
-          }
+            })),
+          }));
+          const nuevoTotal = nuevasVpc.flatMap((c: any) => c.variantesPorTalles).reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
+          productosByDoc[item.documentId] = { ...producto, variantesPorColegio: nuevasVpc, stock: nuevoTotal };
+          dataPut = { variantesPorColegio: nuevasVpc, stock: nuevoTotal };
+        } else {
+          const nuevasVpt = (producto.variantesPorTalle || []).map((v: any) => ({
+            talle: v.talle,
+            cantidad: v.talle === item.size
+              ? Math.max(0, Number(v.cantidad ?? 0) - Number(item.quantity))
+              : Number(v.cantidad ?? 0),
+            precio: v.precio,
+          }));
+          const nuevoTotal = nuevasVpt.reduce((s: number, v: any) => s + Number(v.cantidad ?? 0), 0);
+          productosByDoc[item.documentId] = { ...producto, variantesPorTalle: nuevasVpt, stock: nuevoTotal };
+          dataPut = { variantesPorTalle: nuevasVpt, stock: nuevoTotal };
+        }
 
-          const putRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: dataPut }),
+        const putRes = await fetch(`https://vps-4937880-x.dattaweb.com/api/productos/${item.documentId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: dataPut }),
+        });
+        const putJson = await putRes.json();
+        if (!putRes.ok) {
+          console.error("📉 Error PUT stock (request):", { data: dataPut });
+          console.error("📉 Error PUT stock (response):", putJson);
+          await showDebugModal(`Error al actualizar stock de ${item.name}`, { data: dataPut }, putJson, {
+            endpoint: `PUT /api/productos/${item.documentId} (por documentId)`,
+            colegio: item.colegio ?? null,
+            talle: item.size ?? null,
+            color: item.color ?? null,
+            cantidadVendida: Number(item.quantity),
           });
-          const putJson = await putRes.json();
-          if (!putRes.ok) {
-            console.error("📉 Error PUT stock (request):", { data: dataPut });
-            console.error("📉 Error PUT stock (response):", putJson);
-            await showDebugModal(`Error al actualizar stock de ${item.name}`, { data: dataPut }, putJson, {
-              endpoint: `PUT /api/productos/${item.documentId} (por documentId)`,
-              colegio: item.colegio ?? null,
-              talle: item.size ?? null,
-              cantidadVendida: Number(item.quantity),
-            });
-            throw new Error(`Error al actualizar stock de ${item.name}`);
-          }
+          throw new Error(`Error al actualizar stock de ${item.name}`);
         }
       }
 
@@ -646,6 +792,7 @@ export default function POSPage() {
         descripcion: i.name,
         colegio: i.colegio ?? null,
         talle: i.size ?? null,
+        color: i.color ?? i.detalle ?? null,
         cantidad: Number(i.quantity),
         precio: Number(i.price),
         importe: Number(i.price) * Number(i.quantity),
@@ -807,14 +954,14 @@ export default function POSPage() {
                   <div className="p-3 flex flex-col gap-2">
                     {cart.map((item, index) => (
                       <div
-                        key={`${item.documentId}-${item.size ?? "x"}-${item.colegio ?? "x"}-${index}`}
+                        key={`${item.documentId}-${item.size ?? "x"}-${item.colegio ?? "x"}-${item.color ?? "x"}-${index}`}
                         className="flex flex-col gap-1"
                       >
                         <POSCartItem
                           item={item as any}
-                          onIncrement={() => updateQuantity(item.id, item.size, 1, item.colegio)}
-                          onDecrement={() => updateQuantity(item.id, item.size, -1, item.colegio)}
-                          onRemove={() => removeItem(item.id, item.size, item.colegio)}
+                          onIncrement={() => updateQuantity(item.id, item.size, 1, item.colegio, item.color)}
+                          onDecrement={() => updateQuantity(item.id, item.size, -1, item.colegio, item.color)}
+                          onRemove={() => removeItem(item.id, item.size, item.colegio, item.color)}
                           inlineSizeSelector={false}
                         />
                         {(item.variantes?.length || (item.variantesPorColegio?.length && item.colegio)) ? (
@@ -993,6 +1140,85 @@ export default function POSPage() {
               Continuar sin talle (elegir luego)
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Dialog: color/detalle para producto básico ─── */}
+      <Dialog open={showBasicoModal} onOpenChange={(o) => !o && setShowBasicoModal(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              {productoBasicoActual?.nombre} — Elegir variante
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-auto">
+            {(productoBasicoActual?.variantesBasico || []).map((v: VarianteBasico, idx: number) => {
+              const base = v.color || v.detalle || String(idx);
+              const key = v.talle ? `${base}__${v.talle}` : base;
+              const actual = seleccionesBasico[key] ?? 0;
+              const max = v.cantidad ?? 0;
+              const isColor = !!v.color;
+              const label = [v.color || v.detalle, v.talle].filter(Boolean).join(" / ") || "Variante";
+
+              // Dot color mapping
+              const colorDot: Record<string, string> = {
+                azul: "bg-blue-500",
+                rojo: "bg-red-500",
+                verde: "bg-green-500",
+                gris: "bg-gray-400",
+              };
+              const dotClass = isColor ? (colorDot[v.color!.toLowerCase()] ?? "bg-muted-foreground") : "";
+
+              return (
+                <div key={key} className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="flex items-center gap-2">
+                    {isColor && <span className={`h-3 w-3 rounded-full shrink-0 ${dotClass}`} />}
+                    <div>
+                      <span className="font-medium text-sm capitalize">{label}</span>
+                      {typeof v.precio === "number" && (
+                        <span className="text-xs text-muted-foreground ml-2">
+                          ${v.precio.toLocaleString("es-AR")}
+                        </span>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {max > 0 ? `${max} disponible${max !== 1 ? "s" : ""}` : "Sin stock"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline" size="icon" className="h-8 w-8"
+                      onClick={() => setSeleccionesBasico(prev => ({ ...prev, [key]: Math.max(0, (prev[key] ?? 0) - 1) }))}
+                      disabled={actual <= 0 || max === 0}
+                    >-</Button>
+                    <input
+                      type="number" inputMode="numeric"
+                      className="w-12 text-center rounded-md border px-1 py-1 text-sm bg-background"
+                      min={0} max={max} value={actual}
+                      disabled={max === 0}
+                      onChange={e => setSeleccionesBasico(prev => ({ ...prev, [key]: Math.max(0, Math.min(max, Number(e.target.value))) }))}
+                    />
+                    <Button
+                      variant="outline" size="icon" className="h-8 w-8"
+                      onClick={() => setSeleccionesBasico(prev => ({ ...prev, [key]: Math.min(max, (prev[key] ?? 0) + 1) }))}
+                      disabled={actual >= max || max === 0}
+                    >+</Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <Button
+            onClick={confirmarBasico}
+            disabled={Object.values(seleccionesBasico).every(v => v === 0)}
+            className="w-full"
+          >
+            {Object.values(seleccionesBasico).reduce((a, b) => a + b, 0) > 0
+              ? `Agregar ${Object.values(seleccionesBasico).reduce((a, b) => a + b, 0)} al carrito`
+              : "Seleccioná una variante"}
+          </Button>
         </DialogContent>
       </Dialog>
     </div>
